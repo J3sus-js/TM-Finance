@@ -1,10 +1,11 @@
-from datetime import datetime
-from contextlib import contextmanager
-import sqlite3
-import os
+from datetime import date
+import csv
+import io
 import streamlit as st
+import database as db
 
-DB_NAME = "control_gastos.db"
+METODOS_PAGO = ["Efectivo", "Tarjeta de Crédito", "Tarjeta de Débito", "Transferencia"]
+
 
 # ==========================================
 # CONFIGURACIÓN DE ESTILO Y PÁGINA
@@ -34,44 +35,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# GESTIÓN DE BASE DE DATOS (Backend)
-# ==========================================
-@contextmanager
-def obtener_conexion():
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+def rango_mes_actual():
+    hoy = date.today()
+    inicio = date(hoy.year, hoy.month, 1)
+    siguiente = date(hoy.year + (hoy.month == 12), hoy.month % 12 + 1, 1)
+    return inicio, siguiente
 
-def inicializar_bd():
-    with obtener_conexion() as conn:
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS gastos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                fecha TEXT NOT NULL DEFAULT (date('now')),
-                categoria TEXT NOT NULL,
-                descripcion TEXT DEFAULT '',
-                monto REAL NOT NULL CHECK(monto > 0),
-                metodo_pago TEXT NOT NULL DEFAULT 'Efectivo'
-            )
-        ''')
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS presupuestos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                categoria TEXT UNIQUE NOT NULL,
-                limite REAL NOT NULL CHECK(limite > 0)
-            )
-        ''')
 
-inicializar_bd()
+db.initialize_database()
 
 # ==========================================
 # BARRA LATERAL (Sidebar)
@@ -93,12 +64,8 @@ if menu == "📊 Resumen y Gráficos":
     st.title("📊 Panel General de Finanzas")
     st.markdown("Visualiza el comportamiento histórico de tus finanzas personales de forma rápida.")
     
-    with obtener_conexion() as conn:
-        cursor = conn.execute("SELECT SUM(monto) AS total FROM gastos")
-        total_hist = cursor.fetchone()["total"] or 0.0
-
-        cursor_mes = conn.execute("SELECT SUM(monto) AS total FROM gastos WHERE strftime('%Y-%m', fecha) = ?", (datetime.now().strftime("%Y-%m"),))
-        total_mes_actual = cursor_mes.fetchone()["total"] or 0.0
+    mes_inicio, mes_siguiente = rango_mes_actual()
+    total_hist, total_mes_actual, datos_cat = db.obtener_resumen(mes_inicio, mes_siguiente)
 
     # Tarjetas de métricas superiores
     col_m1, col_m2 = st.columns(2)
@@ -113,10 +80,6 @@ if menu == "📊 Resumen y Gráficos":
 
     with col1:
         st.subheader("📈 Distribución por Categoría")
-        with obtener_conexion() as conn:
-            cursor = conn.execute("SELECT categoria, SUM(monto) AS total FROM gastos GROUP BY categoria ORDER BY total DESC")
-            datos_cat = [dict(row) for row in cursor.fetchall()]
-        
         if datos_cat:
             chart_data = {row["categoria"]: row["total"] for row in datos_cat}
             st.bar_chart(chart_data)
@@ -147,9 +110,9 @@ elif menu == "➕ Registrar Gasto":
             categoria = st.text_input("Categoría (Ej: Supermercado, Alquiler, Ocio)")
             monto = st.number_input("Monto ($)", min_value=0.01, format="%.2f", step=1.0)
         with col_f2:
-            fecha = st.date_input("Fecha del Gasto", value=datetime.today())
-            metodo_pago = st.selectbox("Método de Pago", ["Efectivo", "Tarjeta de Crédito", "Tarjeta de Débito", "Transferencia"])
-        
+            fecha = st.date_input("Fecha del Gasto", value=date.today())
+            metodo_pago = st.selectbox("Método de Pago", METODOS_PAGO)
+
         descripcion = st.text_area("Descripción (Opcional)", placeholder="Ej: Compra de víveres en el supermercado local...")
         
         submitted = st.form_submit_button("💾 Guardar Gasto en el Sistema", use_container_width=True)
@@ -159,11 +122,8 @@ elif menu == "➕ Registrar Gasto":
                 st.error("⚠️ La categoría es obligatoria.")
             else:
                 try:
-                    with obtener_conexion() as conn:
-                        conn.execute('''
-                            INSERT INTO gastos (fecha, categoria, descripcion, monto, metodo_pago)
-                            VALUES (?, ?, ?, ?, ?)
-                        ''', (fecha.strftime("%Y-%m-%d"), categoria.strip(), descripcion.strip(), monto, metodo_pago))
+                    db.agregar_categoria(categoria)
+                    db.registrar_gasto(fecha, categoria, descripcion, monto, metodo_pago)
                     st.success("¡Gasto registrado y almacenado con éxito!")
                 except Exception as e:
                     st.error(f"Error al guardar en la base de datos: {e}")
@@ -174,28 +134,19 @@ elif menu == "➕ Registrar Gasto":
 elif menu == "📋 Historial y Filtros":
     st.title("📋 Historial Detallado de Gastos")
     
-    col_fil1, col_fil2 = st.columns(2)
+    col_fil1, col_fil2, col_fil3 = st.columns(3)
     with col_fil1:
         cat_filtro = st.text_input("🔍 Filtrar por categoría:")
     with col_fil2:
-        metodo_filtro = st.selectbox("💳 Filtrar por método de pago", ["Todos", "Efectivo", "Tarjeta de Crédito", "Tarjeta de Débito", "Transferencia"])
-    
-    query = "SELECT * FROM gastos WHERE 1=1"
-    params = []
-    
-    if cat_filtro:
-        query += " AND categoria COLLATE NOCASE LIKE ?"
-        params.append(f"%{cat_filtro.strip()}%")
-        
-    if metodo_filtro != "Todos":
-        query += " AND metodo_pago = ?"
-        params.append(metodo_filtro)
-        
-    query += " ORDER BY fecha DESC, id DESC"
-    
-    with obtener_conexion() as conn:
-        cursor = conn.execute(query, params)
-        gastos = [dict(row) for row in cursor.fetchall()]
+        metodo_filtro = st.selectbox("💳 Filtrar por método de pago", ["Todos", *METODOS_PAGO])
+    with col_fil3:
+        filtrar_fechas = st.checkbox("Filtrar por fechas")
+    fecha_inicio = fecha_fin = None
+    if filtrar_fechas:
+        col_fecha1, col_fecha2 = st.columns(2)
+        fecha_inicio = col_fecha1.date_input("Desde", value=date.today().replace(day=1))
+        fecha_fin = col_fecha2.date_input("Hasta", value=date.today())
+    gastos = db.listar_gastos(fecha_inicio, fecha_fin, cat_filtro, metodo_filtro)
         
     if gastos:
         st.markdown(f"Mostrando **{len(gastos)}** registros encontrados:")
@@ -209,9 +160,25 @@ elif menu == "📋 Historial y Filtros":
                 cols[3].markdown(f"💰 **${g['monto']:,.2f}** ({g['metodo_pago']})")
                 
                 if cols[4].button("🗑️ Borrar", key=f"del_{g['id']}"):
-                    with obtener_conexion() as conn:
-                        conn.execute("DELETE FROM gastos WHERE id = ?", (g['id'],))
+                    db.eliminar_gasto(g["id"])
                     st.rerun()
+                with st.expander(f"Editar gasto #{g['id']}"):
+                    with st.form(f"editar_{g['id']}"):
+                        metodos_edicion = METODOS_PAGO.copy()
+                        if g["metodo_pago"] not in metodos_edicion:
+                            metodos_edicion.append(g["metodo_pago"])
+                        categoria_edit = st.text_input("Categoría", value=g["categoria"], key=f"cat_{g['id']}")
+                        descripcion_edit = st.text_input("Descripción", value=g["descripcion"], key=f"desc_{g['id']}")
+                        fecha_edit = st.date_input("Fecha", value=g["fecha"], key=f"fecha_{g['id']}")
+                        monto_edit = st.number_input("Monto ($)", min_value=0.01, value=float(g["monto"]), format="%.2f", key=f"monto_{g['id']}")
+                        metodo_edit = st.selectbox("Método de pago", metodos_edicion, index=metodos_edicion.index(g["metodo_pago"]), key=f"metodo_{g['id']}")
+                        if st.form_submit_button("Guardar cambios"):
+                            if categoria_edit.strip():
+                                db.agregar_categoria(categoria_edit)
+                                db.actualizar_gasto(g["id"], fecha_edit, categoria_edit.strip(), descripcion_edit.strip(), monto_edit, metodo_edit)
+                                st.rerun()
+                            else:
+                                st.error("La categoría es obligatoria.")
                 st.divider()
     else:
         st.info("No se encontraron registros que coincidan con los filtros seleccionados.")
@@ -234,11 +201,7 @@ elif menu == "🎯 Presupuestos":
         
         if guardar_p:
             if cat_pres.strip():
-                with obtener_conexion() as conn:
-                    conn.execute('''
-                        INSERT INTO presupuestos (categoria, limite) VALUES (?, ?)
-                        ON CONFLICT(categoria) DO UPDATE SET limite = ?
-                    ''', (cat_pres.strip(), limite, limite))
+                db.guardar_presupuesto(cat_pres, limite)
                 st.success(f"¡Presupuesto para '{cat_pres}' actualizado correctamente!")
             else:
                 st.error("Debes indicar una categoría válida.")
@@ -246,21 +209,11 @@ elif menu == "🎯 Presupuestos":
     st.markdown("---")
     st.subheader("📊 Estado Actual de los Presupuestos (Mes en curso)")
     
-    with obtener_conexion() as conn:
-        cursor = conn.execute("SELECT * FROM presupuestos")
-        presupuestos = cursor.fetchall()
-        
+    mes_inicio, mes_siguiente = rango_mes_actual()
+    presupuestos = db.listar_presupuestos(mes_inicio, mes_siguiente)
     if presupuestos:
-        mes_actual = datetime.now().strftime("%Y-%m")
         for p in presupuestos:
-            with obtener_conexion() as conn:
-                cur_g = conn.execute('''
-                    SELECT SUM(monto) as total FROM gastos 
-                    WHERE categoria = ? AND strftime('%Y-%m', fecha) = ?
-                ''', (p["categoria"], mes_actual))
-                res_g = cur_g.fetchone()
-                gastado = res_g["total"] if res_g and res_g["total"] else 0.0
-                
+            gastado = p["gastado"]
             limite_p = p["limite"]
             porcentaje = (gastado / limite_p) if limite_p > 0 else 0
             
@@ -281,35 +234,49 @@ elif menu == "🎯 Presupuestos":
 # 5. ADMINISTRACIÓN
 # ==========================================
 elif menu == "⚙️ Administración":
-    st.title("⚙️ Opciones de Administración y Respaldo")
-    
-    st.subheader("📂 Copias de Seguridad")
-    st.markdown("Genera un respaldo seguro de tu base de datos SQLite de forma inmediata.")
-    if st.button("🔄 Crear Copia de Seguridad Ahora", use_container_width=True):
-        os.makedirs("backups", exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_name = os.path.join("backups", f"control_gastos_backup_{timestamp}.db")
+    st.title("⚙️ Administración")
+
+    st.subheader("🏷️ Gestionar categorías")
+    nueva_categoria = st.text_input("Nueva categoría")
+    if st.button("Añadir categoría"):
         try:
-            import shutil
-            shutil.copy2(DB_NAME, backup_name)
-            st.success(f"Copia de seguridad guardada con éxito en la ruta: `{backup_name}`")
-        except Exception as e:
-            st.error(f"Error al generar la copia: {e}")
-            
-    st.markdown("---")
-    st.subheader("📊 Exportación de Datos")
-    st.markdown("Descarga todos tus registros de gastos en un archivo estructurado CSV.")
-    if st.button("📥 Exportar Datos a CSV", use_container_width=True):
-        with obtener_conexion() as conn:
-            cursor = conn.execute("SELECT * FROM gastos ORDER BY fecha DESC")
-            filas = cursor.fetchall()
-        
-        import csv
-        csv_filename = "reporte_gastos_web.csv"
-        with open(csv_filename, mode="w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["ID", "Fecha", "Categoría", "Descripción", "Monto", "Método de Pago"])
-            for row in filas:
-                writer.writerow([row["id"], row["fecha"], row["categoria"], row["descripcion"], row["monto"], row["metodo_pago"]])
-        st.success(f"¡Archivo generado con éxito como `{csv_filename}` en la carpeta del proyecto!")
+            db.agregar_categoria(nueva_categoria)
+            st.success("Categoría guardada.")
+            st.rerun()
+        except ValueError as error:
+            st.error(str(error))
+    categorias = db.listar_categorias()
+    if categorias:
+        categoria_eliminar = st.selectbox("Categoría para eliminar", categorias)
+        if st.button("Eliminar categoría seleccionada"):
+            try:
+                db.eliminar_categoria(categoria_eliminar)
+                st.success("Categoría eliminada.")
+                st.rerun()
+            except ValueError as error:
+                st.error(str(error))
+
+    st.divider()
+    st.subheader("📊 Exportar datos")
+    filas = db.exportar_gastos()
+    salida = io.StringIO()
+    writer = csv.writer(salida)
+    writer.writerow(["ID", "Fecha", "Categoría", "Descripción", "Monto", "Método de Pago"])
+    for fila in filas:
+        writer.writerow([fila["id"], fila["fecha"], fila["categoria"], fila["descripcion"], fila["monto"], fila["metodo_pago"]])
+    st.download_button(
+        "📥 Descargar CSV",
+        data=salida.getvalue().encode("utf-8-sig"),
+        file_name="reporte_gastos.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("🧹 Restablecer datos")
+    confirmar_reset = st.checkbox("Confirmo que quiero borrar todos los gastos y presupuestos")
+    if st.button("Borrar datos", type="primary", disabled=not confirmar_reset):
+        db.borrar_datos()
+        st.success("Se eliminaron los gastos y presupuestos. Las categorías se conservaron.")
+        st.rerun()
         
