@@ -36,16 +36,16 @@ st.markdown("""
 
         :root {
             color-scheme: light;
-            --tm-ink: #26302b;
-            --tm-muted: #747e78;
-            --tm-accent: #b84837;
-            --tm-accent-dark: #963a2d;
-            --tm-canvas: #f5f7f4;
-            --tm-line: #e3e7df;
-            --tm-control-line: #d8e0d7;
-            --tm-shadow: rgba(35, 48, 43, .045);
-            --tm-positive: #17724c;
-            --tm-negative: #b83c34;
+            --tm-ink: #182d2b;
+            --tm-muted: #71817e;
+            --tm-accent: #188b7b;
+            --tm-accent-dark: #116b60;
+            --tm-canvas: #f4f7f6;
+            --tm-line: #e4ebe8;
+            --tm-control-line: #d9e3df;
+            --tm-shadow: rgba(24, 45, 43, .035);
+            --tm-positive: #14805e;
+            --tm-negative: #dc2626;
             --tm-white: #ffffff;
         }
 
@@ -215,17 +215,17 @@ st.markdown("""
         @media (prefers-color-scheme: dark) {
             :root {
                 color-scheme: dark;
-                --tm-ink: #edf2ed;
-                --tm-muted: #a6b2a9;
-                --tm-accent: #ed846d;
-                --tm-accent-dark: #d56a55;
-                --tm-canvas: #111a16;
-                --tm-line: #2d3a32;
-                --tm-control-line: #415047;
+                --tm-ink: #e4f1ee;
+                --tm-muted: #a0b7b1;
+                --tm-accent: #41b6a5;
+                --tm-accent-dark: #2c9c8c;
+                --tm-canvas: #0f1e1b;
+                --tm-line: #263c37;
+                --tm-control-line: #35534c;
                 --tm-shadow: rgba(0, 0, 0, .2);
-                --tm-positive: #66d39b;
-                --tm-negative: #ff8b80;
-                --tm-white: #1a2520;
+                --tm-positive: #53c98c;
+                --tm-negative: #ff8278;
+                --tm-white: #172925;
             }
             [data-testid="stVegaLiteChart"] svg text {
                 fill: var(--tm-muted) !important;
@@ -267,12 +267,26 @@ def verificar_password(password, encoded):
         return False
 
 
+def obtener_configuracion(nombre, predeterminado=None):
+    valor = os.getenv(nombre)
+    if valor:
+        return valor
+    try:
+        return st.secrets.get(nombre, predeterminado)
+    except Exception:
+        return predeterminado
+
+
 def enviar_correo_restauracion(email, token):
-    host = os.getenv("SMTP_HOST")
-    sender = os.getenv("SMTP_FROM") or os.getenv("SMTP_USER")
-    base_url = os.getenv("APP_BASE_URL")
+    host = obtener_configuracion("SMTP_HOST")
+    username = obtener_configuracion("SMTP_USER")
+    sender = obtener_configuracion("SMTP_FROM") or username
+    base_url = obtener_configuracion("APP_BASE_URL")
     if not host or not sender or not base_url:
-        raise RuntimeError("La recuperación requiere configurar SMTP_HOST, SMTP_FROM y APP_BASE_URL.")
+        raise RuntimeError(
+            "Configura SMTP_HOST, APP_BASE_URL y un remitente (SMTP_FROM o SMTP_USER) "
+            "en las variables de entorno o en los secretos de Streamlit."
+        )
 
     message = EmailMessage()
     message["Subject"] = "Restablece tu contraseña de TM Finance"
@@ -281,7 +295,7 @@ def enviar_correo_restauracion(email, token):
     link = f"{base_url.rstrip('/')}?reset={quote(token)}"
     message.set_content(f"Usa este enlace para cambiar tu contraseña. Vence en una hora:\n\n{link}\n")
 
-    port = int(os.getenv("SMTP_PORT", "587"))
+    port = int(obtener_configuracion("SMTP_PORT", "587"))
     if port == 465:
         server = smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=20)
     else:
@@ -289,8 +303,7 @@ def enviar_correo_restauracion(email, token):
     with server:
         if port != 465:
             server.starttls(context=ssl.create_default_context())
-        username = os.getenv("SMTP_USER")
-        password = os.getenv("SMTP_PASSWORD")
+        password = obtener_configuracion("SMTP_PASSWORD")
         if username and password:
             server.login(username, password)
         server.send_message(message)
@@ -567,7 +580,7 @@ if menu == "Resumen":
                 "mark": {"type": "arc", "innerRadius": 54},
                 "encoding": {
                     "theta": {"field": "total", "type": "quantitative"},
-                    "color": {"field": "categoria", "type": "nominal", "scale": {"range": ["#17724c", "#d49a25", "#b84837", "#548eb6", "#82934e", "#81728d"]}},
+                    "color": {"field": "categoria", "type": "nominal", "scale": {"range": ["#188b7b", "#d1a74b", "#e06d5d", "#519c99", "#83a86f", "#6b8290"]}},
                     "tooltip": [{"field": "categoria", "type": "nominal"}, {"field": "total", "type": "quantitative", "format": "$,.2f"}],
                 },
                 "view": {"stroke": None},

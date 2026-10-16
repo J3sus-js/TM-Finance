@@ -20,12 +20,24 @@ los gastos y presupuestos de la base heredada se copian a esa cuenta; las cuenta
 posteriores empiezan con sus propios datos.
 
 La casilla **Recordarme** conserva la preferencia durante la sesión activa de
-Streamlit. Para recuperar una contraseña por correo, configura estas variables de
-entorno en el servidor, sin guardarlas en el repositorio:
+Streamlit. Para recuperar una contraseña por correo, configura estos valores como
+variables de entorno o como secretos de Streamlit (`.streamlit/secrets.toml` en
+local; **Settings > Secrets** en Streamlit Community Cloud):
 
-- `SMTP_HOST`, `SMTP_PORT` (587 para STARTTLS o 465 para SSL)
-- `SMTP_USER` y `SMTP_PASSWORD` si el servidor requiere autenticación
-- `SMTP_FROM` y `APP_BASE_URL`
+```toml
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = 587
+SMTP_USER = "tu-cuenta@gmail.com"
+SMTP_PASSWORD = "tu-contraseña-de-aplicación-de-Google"
+SMTP_FROM = "tu-cuenta@gmail.com"
+APP_BASE_URL = "https://tmfinance.streamlit.app/"
+```
+
+En Google, usa una contraseña de aplicación (requiere activar la verificación en
+dos pasos); no uses la contraseña normal de la cuenta. Sustituye `tu-cuenta` por
+la dirección Gmail real. `SMTP_FROM` puede omitirse si `SMTP_USER` sirve como
+remitente. No subas credenciales reales ni el archivo local de secretos al
+repositorio.
 
 La utilidad `control_de_gastos.py` es un programa de consola heredado y no usa el
 login de la aplicación web. No la expongas como servicio público.
