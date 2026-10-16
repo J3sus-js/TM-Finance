@@ -5,7 +5,7 @@ from contextlib import contextmanager
 import pandas as pd
 
 
-DB_PATH = "/data/control_gastos.db" if os.path.exists("/data") else "control_gastos.db"
+DB_PATH = os.getenv("TM_FINANCE_DB_PATH", "/data/control_gastos.db" if os.path.exists("/data") else "control_gastos.db")
 
 
 def get_connection():
@@ -80,6 +80,235 @@ def initialize_database():
         """)
         conn.execute(f"CREATE INDEX IF NOT EXISTS idx_gastos_fecha ON gastos(fecha)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_gastos_categoria ON gastos(categoria)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                password_hash TEXT NOT NULL,
+                creado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS transacciones (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+                tipo TEXT NOT NULL CHECK (tipo IN ('Ingreso', 'Gasto')),
+                monto REAL NOT NULL CHECK (monto > 0),
+                categoria TEXT NOT NULL,
+                fecha TEXT NOT NULL,
+                descripcion TEXT NOT NULL DEFAULT '',
+                metodo_pago TEXT NOT NULL DEFAULT 'Efectivo'
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS presupuestos_usuario (
+                usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+                categoria TEXT NOT NULL,
+                monto_limite REAL NOT NULL CHECK (monto_limite > 0),
+                PRIMARY KEY (usuario_id, categoria)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tokens_restauracion (
+                usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
+                token_hash TEXT NOT NULL UNIQUE,
+                vence_en TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_transacciones_usuario_fecha ON transacciones(usuario_id, fecha DESC, id DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_transacciones_usuario_tipo ON transacciones(usuario_id, tipo)")
+        conn.executemany(
+            "INSERT OR IGNORE INTO categorias (nombre) VALUES (?)",
+            [(nombre,) for nombre in ("Comida", "Transporte", "Vivienda", "Salud", "Entretenimiento", "Educación", "Servicios", "Otros")],
+        )
+
+
+def crear_usuario(username, email, password_hash):
+    username = username.strip()
+    email = email.strip().lower()
+    if not username or not email or not password_hash:
+        raise ValueError("Todos los campos de la cuenta son obligatorios.")
+    with _connection() as conn:
+        primera_cuenta = conn.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] == 0
+        try:
+            cursor = conn.execute(
+                "INSERT INTO usuarios (username, email, password_hash) VALUES (?, ?, ?)",
+                (username, email, password_hash),
+            )
+        except sqlite3.IntegrityError as error:
+            raise ValueError("Ese nombre de usuario o correo ya está registrado.") from error
+        usuario_id = cursor.lastrowid
+        if primera_cuenta:
+            conn.execute("""
+                INSERT INTO transacciones (usuario_id, tipo, monto, categoria, fecha, descripcion, metodo_pago)
+                SELECT ?, 'Gasto', monto, categoria, fecha, descripcion, metodo_pago FROM gastos
+            """, (usuario_id,))
+            budget_columns = {row["name"] for row in conn.execute("PRAGMA table_info(presupuestos)")}
+            budget_column = "monto_limite" if "monto_limite" in budget_columns else "limite"
+            conn.execute(f"""
+                INSERT OR IGNORE INTO presupuestos_usuario (usuario_id, categoria, monto_limite)
+                SELECT ?, categoria, {budget_column} FROM presupuestos
+            """, (usuario_id,))
+    return obtener_usuario_por_id(usuario_id)
+
+
+def obtener_usuario_por_email(email):
+    rows = _rows(
+        "SELECT id, username, email, password_hash FROM usuarios WHERE email = ? COLLATE NOCASE",
+        (email.strip(),),
+    )
+    return rows[0] if rows else None
+
+
+def obtener_usuario_por_id(usuario_id):
+    rows = _rows("SELECT id, username, email FROM usuarios WHERE id = ?", (usuario_id,))
+    return rows[0] if rows else None
+
+
+def contar_usuarios():
+    return _rows("SELECT COUNT(*) AS total FROM usuarios")[0]["total"]
+
+
+def guardar_token_restauracion(usuario_id, token_hash, vence_en):
+    with _connection() as conn:
+        conn.execute("""
+            INSERT INTO tokens_restauracion (usuario_id, token_hash, vence_en) VALUES (?, ?, ?)
+            ON CONFLICT(usuario_id) DO UPDATE SET token_hash = excluded.token_hash, vence_en = excluded.vence_en
+        """, (usuario_id, token_hash, _value(vence_en)))
+
+
+def obtener_usuario_por_token(token_hash, ahora):
+    rows = _rows("""
+        SELECT u.id, u.email FROM usuarios u
+        JOIN tokens_restauracion t ON t.usuario_id = u.id
+        WHERE t.token_hash = ? AND t.vence_en > ?
+    """, (token_hash, ahora))
+    return rows[0] if rows else None
+
+
+def cambiar_password(usuario_id, password_hash):
+    with _connection() as conn:
+        conn.execute("UPDATE usuarios SET password_hash = ? WHERE id = ?", (password_hash, usuario_id))
+        conn.execute("DELETE FROM tokens_restauracion WHERE usuario_id = ?", (usuario_id,))
+
+
+def registrar_transaccion(usuario_id, tipo, fecha, categoria, descripcion, monto, metodo_pago="Efectivo"):
+    if tipo not in ("Ingreso", "Gasto"):
+        raise ValueError("El tipo debe ser Ingreso o Gasto.")
+    if monto <= 0:
+        raise ValueError("El monto debe ser mayor a cero.")
+    categoria = categoria.strip()
+    if not categoria:
+        raise ValueError("La categoría es obligatoria.")
+    agregar_categoria(categoria)
+    with _connection() as conn:
+        conn.execute("""
+            INSERT INTO transacciones (usuario_id, tipo, fecha, categoria, descripcion, monto, metodo_pago)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (usuario_id, tipo, _value(fecha), categoria, descripcion.strip(), monto, metodo_pago))
+
+
+def listar_transacciones(usuario_id, fecha_inicio=None, fecha_fin=None, categoria=None, tipo=None, limite=None):
+    clauses = ["usuario_id = ?"]
+    params = [usuario_id]
+    if fecha_inicio:
+        clauses.append("fecha >= ?")
+        params.append(_value(fecha_inicio))
+    if fecha_fin:
+        clauses.append("fecha <= ?")
+        params.append(_value(fecha_fin))
+    if categoria:
+        clauses.append("LOWER(categoria) LIKE LOWER(?)")
+        params.append(f"%{categoria.strip()}%")
+    if tipo and tipo != "Todos":
+        clauses.append("tipo = ?")
+        params.append(tipo)
+    limit_sql = " LIMIT ?" if limite else ""
+    if limite:
+        params.append(limite)
+    return _rows(f"""
+        SELECT id, tipo, monto, categoria, fecha, descripcion, metodo_pago
+        FROM transacciones WHERE {' AND '.join(clauses)}
+        ORDER BY fecha DESC, id DESC{limit_sql}
+    """, params)
+
+
+def actualizar_transaccion(usuario_id, transaccion_id, fecha, categoria, descripcion, monto, metodo_pago, tipo="Gasto"):
+    categoria = categoria.strip()
+    if not categoria or monto <= 0 or tipo not in ("Ingreso", "Gasto"):
+        raise ValueError("Indica una categoría, un tipo válido y un monto mayor a cero.")
+    agregar_categoria(categoria)
+    with _connection() as conn:
+        cursor = conn.execute("""
+            UPDATE transacciones
+            SET fecha = ?, categoria = ?, descripcion = ?, monto = ?, metodo_pago = ?, tipo = ?
+            WHERE id = ? AND usuario_id = ?
+        """, (_value(fecha), categoria, descripcion.strip(), monto, metodo_pago, tipo, transaccion_id, usuario_id))
+        if cursor.rowcount == 0:
+            raise ValueError("No se encontró esa transacción.")
+
+
+def eliminar_transaccion(usuario_id, transaccion_id):
+    with _connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM transacciones WHERE id = ? AND usuario_id = ?",
+            (transaccion_id, usuario_id),
+        )
+        if cursor.rowcount == 0:
+            raise ValueError("No se encontró esa transacción.")
+
+
+def obtener_resumen_financiero(usuario_id, mes_inicio, mes_siguiente):
+    resumen = _rows("""
+        SELECT
+            COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE 0 END), 0) AS ingresos,
+            COALESCE(SUM(CASE WHEN tipo = 'Gasto' THEN monto ELSE 0 END), 0) AS gastos,
+            COALESCE(SUM(CASE WHEN tipo = 'Ingreso' AND fecha >= ? AND fecha < ? THEN monto ELSE 0 END), 0) AS ingresos_mes,
+            COALESCE(SUM(CASE WHEN tipo = 'Gasto' AND fecha >= ? AND fecha < ? THEN monto ELSE 0 END), 0) AS gastos_mes
+        FROM transacciones WHERE usuario_id = ?
+    """, (mes_inicio, mes_siguiente, mes_inicio, mes_siguiente, usuario_id))[0]
+    categorias = _rows("""
+        SELECT categoria, SUM(monto) AS total
+        FROM transacciones WHERE usuario_id = ? AND tipo = 'Gasto'
+        GROUP BY categoria ORDER BY total DESC
+    """, (usuario_id,))
+    return {
+        **resumen,
+        "balance": float(resumen["ingresos"] - resumen["gastos"]),
+        "categorias": categorias,
+    }
+
+
+def guardar_presupuesto_usuario(usuario_id, categoria, limite):
+    categoria = categoria.strip()
+    if not categoria or limite <= 0:
+        raise ValueError("Indica una categoría y un límite mayor a cero.")
+    agregar_categoria(categoria)
+    with _connection() as conn:
+        conn.execute("""
+            INSERT INTO presupuestos_usuario (usuario_id, categoria, monto_limite) VALUES (?, ?, ?)
+            ON CONFLICT(usuario_id, categoria) DO UPDATE SET monto_limite = excluded.monto_limite
+        """, (usuario_id, categoria, limite))
+
+
+def listar_presupuestos_usuario(usuario_id, mes_inicio, mes_siguiente):
+    return _rows("""
+        SELECT p.categoria, p.monto_limite AS limite,
+            COALESCE(SUM(t.monto), 0) AS gastado
+        FROM presupuestos_usuario p
+        LEFT JOIN transacciones t ON t.usuario_id = p.usuario_id
+            AND t.categoria = p.categoria AND t.tipo = 'Gasto'
+            AND t.fecha >= ? AND t.fecha < ?
+        WHERE p.usuario_id = ?
+        GROUP BY p.categoria, p.monto_limite ORDER BY p.categoria
+    """, (mes_inicio, mes_siguiente, usuario_id))
+
+
+def borrar_datos_usuario(usuario_id):
+    with _connection() as conn:
+        conn.execute("DELETE FROM transacciones WHERE usuario_id = ?", (usuario_id,))
+        conn.execute("DELETE FROM presupuestos_usuario WHERE usuario_id = ?", (usuario_id,))
 
 
 def listar_categorias():

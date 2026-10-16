@@ -1,32 +1,31 @@
-# TM-Finance
+# TM Finance
 
-## Instrucciones de Instalación
+## Ejecutar
 
-Instala las dependencias y ejecuta la aplicación localmente:
+Instala las dependencias y arranca la aplicación web:
 
 ```bash
 python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## PostgreSQL en Streamlit Community Cloud
+La aplicación web guarda los datos en SQLite (`control_gastos.db`). Para usar otra
+ruta, define `TM_FINANCE_DB_PATH` antes de iniciar Streamlit.
 
-La aplicación usa PostgreSQL mediante `st.connection("postgresql", type="sql")`.
-En Neon o Supabase crea una base de datos y copia sus datos de conexión: usuario,
-contraseña, host y nombre de base de datos. Usa una conexión con SSL habilitado.
+## Cuentas y datos
 
-En Streamlit Community Cloud abre **Advanced settings > Secrets** y agrega:
+Cada cuenta tiene movimientos y presupuestos separados. Las contraseñas se
+almacenan con PBKDF2-HMAC-SHA256, nunca en texto plano. Al crear la primera cuenta,
+los gastos y presupuestos de la base heredada se copian a esa cuenta; las cuentas
+posteriores empiezan con sus propios datos.
 
-```toml
-[connections.postgresql]
-url = "postgresql+psycopg2://USUARIO:CONTRASEÑA@HOST/BASE_DE_DATOS?sslmode=require"
-```
+La casilla **Recordarme** conserva la preferencia durante la sesión activa de
+Streamlit. Para recuperar una contraseña por correo, configura estas variables de
+entorno en el servidor, sin guardarlas en el repositorio:
 
-Sustituye los valores por los de tu proveedor. Codifica caracteres especiales de
-la contraseña para URL (por ejemplo, `@` como `%40`). No guardes credenciales en
-este repositorio ni en `app.py`; configura el secreto directamente en Streamlit
-Cloud. Al iniciar, la app crea las tablas `gastos`, `presupuestos` y `categorias`.
+- `SMTP_HOST`, `SMTP_PORT` (587 para STARTTLS o 465 para SSL)
+- `SMTP_USER` y `SMTP_PASSWORD` si el servidor requiere autenticación
+- `SMTP_FROM` y `APP_BASE_URL`
 
-Los datos que existían en `control_gastos.db` no se copian automáticamente a
-PostgreSQL. Expórtalos antes de retirar el almacenamiento local y cárgalos en la
-nueva base si necesitas conservar el historial previo.
+La utilidad `control_de_gastos.py` es un programa de consola heredado y no usa el
+login de la aplicación web. No la expongas como servicio público.
