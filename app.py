@@ -15,6 +15,7 @@ from urllib.parse import quote
 import pandas as pd
 import streamlit as st
 import database as db
+import google_auth
 
 METODOS_PAGO = ["Efectivo", "Tarjeta de Crédito", "Tarjeta de Débito", "Transferencia"]
 
@@ -23,30 +24,35 @@ METODOS_PAGO = ["Efectivo", "Tarjeta de Crédito", "Tarjeta de Débito", "Transf
 # CONFIGURACIÓN DE ESTILO Y PÁGINA
 # ==========================================
 st.set_page_config(
-    page_title="Control de Gastos Pro", 
+    page_title="Gastos · Control personal",
     page_icon="💸", 
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
+st.session_state.setdefault("appearance", "Claro")
 
-# Estilos alineados con la identidad visual de TM Finance.
+# Estilos claros y compactos inspirados en la referencia de Gastos.
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap');
 
         :root {
             color-scheme: light;
-            --tm-ink: #182d2b;
-            --tm-muted: #71817e;
-            --tm-accent: #188b7b;
-            --tm-accent-dark: #116b60;
-            --tm-canvas: #f4f7f6;
-            --tm-line: #e4ebe8;
-            --tm-control-line: #d9e3df;
-            --tm-shadow: rgba(24, 45, 43, .035);
-            --tm-positive: #14805e;
-            --tm-negative: #dc2626;
+            --tm-ink: #17211d;
+            --tm-muted: #7b8580;
+            --tm-accent: #006b4d;
+            --tm-accent-dark: #00553d;
+            --tm-canvas: #f7f9f8;
+            --tm-line: #e9eeeb;
+            --tm-control-line: #dce5e0;
+            --tm-shadow: rgba(23, 48, 38, .055);
+            --tm-positive: #087a53;
+            --tm-negative: #d84b4b;
             --tm-white: #ffffff;
+            --tm-input: #ffffff;
+            --tm-soft: #f3f8f5;
+            --tm-track: #e8efeb;
+            --tm-avatar: #e7f3ed;
         }
 
         html, body, [class*="css"], [data-testid="stAppViewContainer"] {
@@ -64,7 +70,7 @@ st.markdown("""
             border-right: 1px solid var(--tm-line);
         }
         [data-testid="stSidebar"] > div:first-child {
-            padding-top: 1.5rem;
+            padding-top: 1.25rem;
         }
         [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h3 {
             font-family: 'Sora', sans-serif;
@@ -77,14 +83,33 @@ st.markdown("""
             font-size: .9rem;
         }
         [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] {
-            gap: .25rem;
+            gap: .35rem;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label {
+            min-height: 2.8rem;
+            padding: .15rem .55rem;
+            border-radius: 10px;
+            transition: background .18s ease, color .18s ease;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) {
+            background: var(--tm-accent);
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) p {
+            color: #ffffff;
+            font-weight: 600;
         }
         [data-testid="stMetric"] {
             background: var(--tm-white);
             border: 1px solid var(--tm-line);
-            border-radius: 8px;
+            border-radius: 16px;
             padding: 1.05rem 1.15rem;
-            box-shadow: 0 5px 18px var(--tm-shadow);
+            box-shadow: 0 8px 24px var(--tm-shadow);
+            transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+        }
+        [data-testid="stMetric"]:hover {
+            transform: translateY(-3px);
+            border-color: #c4d9cf;
+            box-shadow: 0 12px 28px var(--tm-shadow);
         }
         [data-testid="stMetricLabel"] p {
             color: var(--tm-muted);
@@ -114,17 +139,80 @@ st.markdown("""
         [data-testid="stBaseButton-primary"] {
             background: var(--tm-accent);
             border-color: var(--tm-accent);
-            color: var(--tm-white);
+            color: #ffffff;
+            font-weight: 700;
+            box-shadow: 0 4px 12px rgba(0, 107, 77, .16);
+            transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
         }
         [data-testid="stBaseButton-primary"]:hover {
             background: var(--tm-accent-dark);
             border-color: var(--tm-accent-dark);
-            color: var(--tm-white);
+            color: #ffffff;
+            transform: translateY(-1px);
+            box-shadow: 0 7px 16px rgba(0, 107, 77, .2);
         }
         [data-testid="stBaseButton-secondary"] {
             border-color: var(--tm-control-line);
             color: var(--tm-ink);
-            border-radius: 6px;
+            border-radius: 9px;
+            background: #ffffff;
+            transition: transform .18s ease, border-color .18s ease, background .18s ease;
+        }
+        [data-testid="stBaseButton-secondary"]:hover {
+            transform: translateY(-1px);
+            border-color: var(--tm-accent);
+            background: var(--tm-soft);
+        }
+        [data-testid="stBaseButton-primary"]:active,
+        [data-testid="stBaseButton-secondary"]:active {
+            transform: scale(.98);
+        }
+        .st-key-theme_toggle {
+            position: fixed;
+            top: 1.1rem;
+            right: 1.25rem;
+            z-index: 1000;
+            width: 3.15rem;
+            animation: tm-float 4s ease-in-out infinite;
+        }
+        .st-key-theme_toggle:hover {
+            animation-play-state: paused;
+        }
+        .st-key-theme_toggle button {
+            position: relative;
+            display: grid;
+            width: 3rem;
+            height: 3rem;
+            min-height: 3rem;
+            padding: 0;
+            place-items: center;
+            overflow: visible;
+            border: 1px solid var(--tm-line);
+            border-radius: 50%;
+            background: var(--tm-white);
+            color: var(--tm-accent);
+            box-shadow: 0 6px 20px var(--tm-shadow);
+            font-size: 1.3rem;
+            animation: tm-enter .45s ease both;
+            transition: transform .25s ease, background .25s ease, box-shadow .25s ease;
+        }
+        .st-key-theme_toggle button::before {
+            position: absolute;
+            inset: -5px;
+            border: 1px solid color-mix(in srgb, var(--tm-accent) 35%, transparent);
+            border-radius: inherit;
+            content: "";
+            pointer-events: none;
+            animation: tm-orbit-pulse 3s ease-out infinite;
+        }
+        .st-key-theme_toggle button:hover {
+            transform: scale(1.09) rotate(-12deg);
+            background: var(--tm-soft);
+            box-shadow: 0 9px 26px var(--tm-shadow);
+        }
+        .st-key-theme_toggle button:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--tm-accent) 42%, transparent);
+            outline-offset: 4px;
         }
         [data-testid="stTextInput"] input,
         [data-testid="stNumberInput"] input,
@@ -133,14 +221,18 @@ st.markdown("""
         [data-testid="stTextArea"] textarea {
             border-color: var(--tm-control-line);
             border-radius: 6px;
-            background: var(--tm-white);
+            background: var(--tm-input);
             color: var(--tm-ink);
         }
         [data-testid="stProgress"] > div > div > div > div {
             background: var(--tm-accent);
         }
+        [data-testid="stProgress"] > div {
+            background: var(--tm-track);
+            border-radius: 999px;
+        }
         [data-testid="stAlert"] {
-            border-radius: 6px;
+            border-radius: 10px;
         }
         hr {
             border-color: var(--tm-line);
@@ -156,14 +248,14 @@ st.markdown("""
             width: 2.3rem;
             height: 2.3rem;
             place-items: center;
-            border-radius: 7px;
+            border-radius: 9px;
             background: var(--tm-accent);
-            color: white;
+            color: #ffffff;
             font: 700 1rem 'Sora', sans-serif;
         }
         .tm-brand-name {
             color: var(--tm-ink);
-            font: 600 .9rem 'Sora', sans-serif;
+            font: 700 .95rem 'Sora', sans-serif;
         }
         .tm-brand-caption {
             margin-top: .08rem;
@@ -172,7 +264,7 @@ st.markdown("""
         }
         .tm-page-kicker {
             margin-bottom: .35rem;
-            color: var(--tm-accent);
+            color: var(--tm-muted);
             font-size: .72rem;
             font-weight: 700;
             letter-spacing: .08em;
@@ -184,66 +276,340 @@ st.markdown("""
             font-size: .95rem;
         }
         .tm-auth-brand {
-            margin: 2rem 0 .5rem;
+            margin: 1.25rem 0 .5rem;
             text-align: center;
         }
-        .tm-auth-brand .tm-brand-mark {
-            width: 2.7rem;
-            height: 2.7rem;
-            margin: auto auto .75rem;
-            font-size: 1.15rem;
+        .tm-auth-icon {
+            display: grid;
+            width: 3rem;
+            height: 3rem;
+            margin: 0 auto .9rem;
+            place-items: center;
+            border-radius: 14px;
+            background: var(--tm-avatar);
+            color: var(--tm-accent);
+            font-size: 1.5rem;
+            font-weight: 700;
         }
         .tm-auth-brand-name {
             color: var(--tm-ink);
-            font: 600 1rem 'Sora', sans-serif;
+            font: 700 1rem 'Sora', sans-serif;
+        }
+        .tm-auth-title {
+            margin: .75rem 0 .3rem;
+            color: var(--tm-ink);
+            font: 700 1.65rem 'Sora', sans-serif;
+            text-align: center;
         }
         .tm-auth-caption {
-            margin: .3rem 0 1.25rem;
+            margin: .3rem 0 1.15rem;
             color: var(--tm-muted);
             font-size: .88rem;
             text-align: center;
         }
+        [data-testid="stLinkButton"] a {
+            min-height: 2.75rem;
+            border: 1px solid var(--tm-control-line);
+            border-radius: 10px;
+            background: #ffffff;
+            color: var(--tm-ink);
+            font-weight: 600;
+            transition: border-color .18s ease, background .18s ease;
+        }
+        [data-testid="stLinkButton"] a:hover {
+            border-color: var(--tm-accent);
+            background: #f7faf8;
+            color: var(--tm-ink);
+        }
+        .tm-auth-separator {
+            display: flex;
+            align-items: center;
+            gap: .8rem;
+            margin: .9rem 0;
+            color: var(--tm-muted);
+            font-size: .8rem;
+        }
+        .tm-auth-separator::before,
+        .tm-auth-separator::after {
+            height: 1px;
+            flex: 1;
+            background: var(--tm-line);
+            content: "";
+        }
+        .tm-auth-footer {
+            margin: .9rem 0 0;
+            color: var(--tm-muted);
+            font-size: .85rem;
+            text-align: center;
+        }
+        .tm-auth-hint {
+            margin: -.5rem 0 .5rem;
+            color: var(--tm-muted);
+            font-size: .75rem;
+        }
         [data-testid="stVerticalBlockBorderWrapper"] {
             border-color: var(--tm-line);
-            border-radius: 8px;
+            border-radius: 16px;
             background: var(--tm-white);
+            box-shadow: 0 8px 24px var(--tm-shadow);
+            animation: tm-enter .35s ease both;
+        }
+        .tm-hero-card {
+            margin: .5rem 0 1.25rem;
+            padding: 1.65rem 1.8rem;
+            border: 1px solid rgba(255, 255, 255, .12);
+            border-radius: 18px;
+            background: linear-gradient(120deg, #006b4d, #087a58);
+            box-shadow: 0 12px 26px rgba(0, 107, 77, .16);
+            color: #ffffff;
+        }
+        .tm-hero-label {
+            color: rgba(255, 255, 255, .78);
+            font-size: .88rem;
+            font-weight: 500;
+        }
+        .tm-hero-value {
+            margin: .4rem 0;
+            color: #ffffff;
+            font: 700 clamp(2rem, 5vw, 2.8rem) 'Sora', sans-serif;
+            letter-spacing: -.04em;
+        }
+        .tm-hero-caption {
+            color: rgba(255, 255, 255, .76);
+            font-size: .82rem;
+        }
+        .tm-profile {
+            display: flex;
+            align-items: center;
+            gap: .7rem;
+            margin: 1.2rem 0 .25rem;
+            padding: .85rem .65rem;
+            border-top: 1px solid var(--tm-line);
+        }
+        .tm-avatar {
+            display: grid;
+            width: 2.45rem;
+            height: 2.45rem;
+            flex: 0 0 2.45rem;
+            place-items: center;
+            border-radius: 50%;
+            background: #e7f3ed;
+            color: var(--tm-accent);
+            font-weight: 700;
+        }
+        .tm-profile-name {
+            color: var(--tm-ink);
+            font-size: .84rem;
+            font-weight: 600;
+        }
+        .tm-profile-email {
+            overflow: hidden;
+            color: var(--tm-muted);
+            font-size: .72rem;
+            text-overflow: ellipsis;
+        }
+        [data-testid="stVerticalBlockBorderWrapper"]:hover {
+            border-color: color-mix(in srgb, var(--tm-accent) 17%, var(--tm-line));
+            box-shadow: 0 12px 30px var(--tm-shadow);
+            transform: translateY(-2px);
+            transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+        }
+        .tm-hero-card {
+            position: relative;
+            overflow: hidden;
+            background-size: 150% 150%;
+            animation: tm-enter .45s ease both, tm-hero-shift 9s ease-in-out infinite alternate;
+        }
+        .tm-hero-card::after {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(110deg, transparent 25%, rgba(255, 255, 255, .12) 48%, transparent 68%);
+            content: "";
+            pointer-events: none;
+            transform: translateX(-110%);
+            animation: tm-sheen 1.2s .2s ease-out both;
         }
         .tm-positive { color: var(--tm-positive); font-weight: 600; }
         .tm-negative { color: var(--tm-negative); font-weight: 600; }
         .tm-muted { color: var(--tm-muted); font-size: .82rem; }
 
-        @media (prefers-color-scheme: dark) {
-            :root {
-                color-scheme: dark;
-                --tm-ink: #e4f1ee;
-                --tm-muted: #a0b7b1;
-                --tm-accent: #41b6a5;
-                --tm-accent-dark: #2c9c8c;
-                --tm-canvas: #0f1e1b;
-                --tm-line: #263c37;
-                --tm-control-line: #35534c;
-                --tm-shadow: rgba(0, 0, 0, .2);
-                --tm-positive: #53c98c;
-                --tm-negative: #ff8278;
-                --tm-white: #172925;
+        @keyframes tm-enter {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes tm-float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        @keyframes tm-orbit-pulse {
+            0% { opacity: .55; transform: scale(.92); }
+            80%, 100% { opacity: 0; transform: scale(1.28); }
+        }
+        @keyframes tm-hero-shift {
+            from { background-position: 0% 50%; }
+            to { background-position: 100% 50%; }
+        }
+        @keyframes tm-sheen {
+            to { transform: translateX(110%); }
+        }
+
+        @media (max-width: 768px) {
+            [data-testid="stAppViewContainer"] .block-container {
+                padding: 1.25rem 1rem 2.5rem;
             }
-            [data-testid="stVegaLiteChart"] svg text {
-                fill: var(--tm-muted) !important;
+            [data-testid="stHorizontalBlock"] {
+                flex-direction: column;
+                gap: .75rem;
+            }
+            [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+                width: 100% !important;
+                flex: 1 1 100%;
+            }
+            .tm-hero-card {
+                padding: 1.3rem 1.25rem;
+                border-radius: 15px;
+            }
+            .st-key-theme_toggle {
+                top: .65rem;
+                right: .7rem;
+                width: 2.8rem;
+            }
+            .st-key-theme_toggle button {
+                width: 2.65rem;
+                height: 2.65rem;
+                min-height: 2.65rem;
+                font-size: 1.15rem;
+            }
+            [data-testid="stMetric"] {
+                padding: .85rem .9rem;
+                border-radius: 12px;
+            }
+            [data-testid="stMetricValue"] {
+                font-size: clamp(1.05rem, 5vw, 1.4rem);
+                overflow-wrap: anywhere;
+            }
+            [data-testid="stSidebar"] [data-testid="stRadio"] label {
+                display: flex;
+                min-height: 44px;
+                align-items: center;
+            }
+            [data-testid="stBaseButton-primary"],
+            [data-testid="stBaseButton-secondary"],
+            [data-testid="stDownloadButton"] button {
+                min-height: 44px;
+            }
+            [data-testid="stTextInput"] input,
+            [data-testid="stNumberInput"] input,
+            [data-testid="stDateInput"] input,
+            [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+            [data-testid="stTextArea"] textarea {
+                min-height: 44px;
+                border-radius: 9px;
+            }
+            [data-testid="stDataFrame"],
+            [data-testid="stVegaLiteChart"] {
+                max-width: 100%;
+                overflow-x: auto;
+            }
+            h1 { font-size: 1.55rem !important; }
+        }
+
+        @media (max-width: 480px) {
+            [data-testid="stAppViewContainer"] .block-container {
+                padding: 1rem .75rem 2rem;
+            }
+            [data-testid="stMetricLabel"] p {
+                font-size: .75rem;
+            }
+            .tm-page-subtitle {
+                font-size: .88rem;
+            }
+            .tm-profile {
+                padding-right: .25rem;
+                padding-left: .25rem;
             }
         }
 
-        @media (max-width: 700px) {
-            h1 { font-size: 1.55rem !important; }
-            [data-testid="stMetricValue"] { font-size: 1.35rem; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                scroll-behavior: auto !important;
+                animation-duration: .01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+            }
         }
     </style>
 """, unsafe_allow_html=True)
+
+if st.session_state.get("appearance") == "Oscuro":
+    st.markdown("""
+        <style>
+            :root {
+                color-scheme: dark;
+                --tm-ink: #edf4ef;
+                --tm-muted: #a0ada6;
+                --tm-accent: #24a875;
+                --tm-accent-dark: #16835a;
+                --tm-canvas: #111714;
+                --tm-line: #2b3932;
+                --tm-control-line: #405147;
+                --tm-shadow: rgba(0, 0, 0, .22);
+                --tm-positive: #55cc94;
+                --tm-negative: #ff8585;
+                --tm-white: #1b2520;
+                --tm-input: #151e19;
+                --tm-soft: #223229;
+                --tm-track: #304138;
+                --tm-avatar: #293d31;
+            }
+            [data-testid="stVegaLiteChart"] svg text,
+            [data-testid="stArrowVegaLiteChart"] svg text {
+                fill: var(--tm-muted) !important;
+            }
+            [data-testid="stDataFrame"] {
+                color-scheme: dark;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+if st.button(
+    "🌙" if st.session_state["appearance"] == "Claro" else "☀️",
+    key="theme_toggle",
+    help=(
+        "Cambiar a modo oscuro"
+        if st.session_state["appearance"] == "Claro"
+        else "Cambiar a modo claro"
+    ),
+    type="tertiary",
+):
+    st.session_state["appearance"] = (
+        "Oscuro" if st.session_state["appearance"] == "Claro" else "Claro"
+    )
+    st.rerun()
 
 def rango_mes_actual():
     hoy = date.today()
     inicio = date(hoy.year, hoy.month, 1)
     siguiente = date(hoy.year + (hoy.month == 12), hoy.month % 12 + 1, 1)
     return inicio, siguiente
+
+
+MESES = (
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+)
+MESES_CORTOS = ("Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+
+
+def desplazar_mes(fecha, cantidad):
+    indice = fecha.year * 12 + fecha.month - 1 + cantidad
+    return date(indice // 12, indice % 12 + 1, 1)
+
+
+def formato_moneda(monto):
+    valor = f"{monto:,.2f}"
+    valor = valor.replace(",", "\0").replace(".", ",").replace("\0", ".")
+    return f"USD {valor}"
 
 
 PASSWORD_ITERATIONS = 310_000
@@ -314,17 +680,81 @@ def iniciar_sesion(usuario):
     st.session_state["username"] = usuario["username"]
 
 
-def mostrar_autenticacion():
+def configuracion_google():
+    return tuple(
+        str(obtener_configuracion(key, "") or "").strip()
+        for key in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI")
+    )
+
+
+def procesar_callback_google():
+    provider_error = st.query_params.get("error")
+    code = st.query_params.get("code")
+    state = st.query_params.get("state")
+    if not provider_error and not code and not state:
+        return None, None
+
+    st.query_params.clear()
+    if provider_error:
+        return None, "No se completó el acceso con Google."
+    if not code or not state:
+        return None, "La respuesta de Google está incompleta. Inténtalo de nuevo."
+
+    client_id, client_secret, redirect_uri = configuracion_google()
+    try:
+        profile = google_auth.user_profile(
+            code, state, client_id, client_secret, redirect_uri
+        )
+        usuario = db.obtener_o_crear_usuario_google(
+            profile["email"],
+            profile["name"],
+            hash_password(secrets.token_urlsafe(48)),
+        )
+    except (google_auth.GoogleAuthError, ValueError) as error:
+        return None, str(error)
+
+    iniciar_sesion(usuario)
+    return usuario, None
+
+
+def mostrar_acceso_google(label):
+    client_id, client_secret, redirect_uri = configuracion_google()
+    if client_id and client_secret and redirect_uri:
+        try:
+            url = google_auth.authorization_url(
+                client_id, client_secret, redirect_uri
+            )
+        except google_auth.GoogleAuthError as error:
+            st.error(str(error))
+        else:
+            st.link_button(f"G   {label}", url, use_container_width=True)
+    else:
+        st.button(f"G   {label}", disabled=True, use_container_width=True)
+        st.caption("Configura las credenciales de Google para activar este acceso.")
+    st.markdown('<div class="tm-auth-separator">o</div>', unsafe_allow_html=True)
+
+
+def mostrar_autenticacion(error_google=None):
     if "auth_mode" not in st.session_state:
         st.session_state.auth_mode = "signup" if db.contar_usuarios() == 0 else "login"
 
     reset_token = st.query_params.get("reset")
-    left, center, right = st.columns([1, 1.15, 1])
+    left, center, right = st.columns([1, 1.3, 1])
     with center:
-        st.markdown("""
+        if error_google:
+            st.error(error_google)
+
+        mode = st.session_state.auth_mode
+        icon, title, subtitle = {
+            "signup": ("＋", "Crear una cuenta", "Regístrate para empezar hoy mismo"),
+            "forgot": ("↻", "Recuperar contraseña", "Te enviaremos un enlace de un solo uso"),
+        }.get(mode, ("↪", "Bienvenido de nuevo", "Inicia sesión en tu cuenta"))
+        st.markdown(f"""
             <div class="tm-auth-brand">
-                <div class="tm-brand-mark">T</div>
-                <div class="tm-auth-brand-name">TM Finance</div>
+                <div class="tm-auth-icon">{icon}</div>
+                <div class="tm-auth-brand-name">Gastos · Control personal</div>
+                <div class="tm-auth-title">{title}</div>
+                <div class="tm-auth-caption">{subtitle}</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -358,20 +788,28 @@ def mostrar_autenticacion():
                             st.rerun()
             return
 
-        mode = st.session_state.auth_mode
         if mode == "signup":
-            st.markdown('<div class="tm-auth-caption">Crea tu espacio financiero personal</div>', unsafe_allow_html=True)
+            mostrar_acceso_google("Registrarse con Google")
             with st.container(border=True):
-                st.subheader("Crear cuenta")
                 with st.form("signup_form"):
-                    username = st.text_input("Nombre de usuario", max_chars=40)
-                    email = st.text_input("Correo electrónico")
-                    password = st.text_input("Contraseña", type="password")
-                    confirmation = st.text_input("Confirmar contraseña", type="password")
-                    submitted = st.form_submit_button("Crear cuenta", type="primary", use_container_width=True)
+                    username = st.text_input(
+                        "Nombre completo", max_chars=40, placeholder="Escribe tu nombre y apellido"
+                    )
+                    email = st.text_input("Correo electrónico", placeholder="tú@ejemplo.com")
+                    password = st.text_input("Contraseña", type="password", placeholder="••••••••")
+                    st.markdown(
+                        '<div class="tm-auth-hint">Debe tener al menos 8 caracteres</div>',
+                        unsafe_allow_html=True,
+                    )
+                    confirmation = st.text_input(
+                        "Confirmar contraseña", type="password", placeholder="••••••••"
+                    )
+                    submitted = st.form_submit_button(
+                        "Registrarse", type="primary", use_container_width=True
+                    )
                 if submitted:
                     if len(username.strip()) < 2:
-                        st.error("El nombre de usuario debe tener al menos 2 caracteres.")
+                        st.error("Escribe tu nombre completo.")
                     elif not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email.strip()):
                         st.error("Escribe un correo electrónico válido.")
                     elif len(password) < 8:
@@ -385,17 +823,19 @@ def mostrar_autenticacion():
                             st.rerun()
                         except ValueError as error:
                             st.error(str(error))
-            if st.button("¿Ya tienes cuenta? Inicia sesión", use_container_width=True):
+            st.markdown(
+                '<div class="tm-auth-footer">¿Ya tienes una cuenta?</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Inicia sesión", use_container_width=True):
                 st.session_state.auth_mode = "login"
                 st.rerun()
             return
 
         if mode == "forgot":
-            st.markdown('<div class="tm-auth-caption">Te enviaremos un enlace de un solo uso</div>', unsafe_allow_html=True)
             with st.container(border=True):
-                st.subheader("Recuperar contraseña")
                 with st.form("forgot_password"):
-                    email = st.text_input("Correo electrónico")
+                    email = st.text_input("Correo electrónico", placeholder="tú@ejemplo.com")
                     submitted = st.form_submit_button("Enviar enlace", type="primary", use_container_width=True)
                 if submitted:
                     usuario = db.obtener_usuario_por_email(email)
@@ -415,15 +855,24 @@ def mostrar_autenticacion():
                 st.rerun()
             return
 
-        st.markdown('<div class="tm-auth-caption">Ingresa para ver tus finanzas</div>', unsafe_allow_html=True)
+        mostrar_acceso_google("Continuar con Google")
         with st.container(border=True):
-            st.subheader("Iniciar sesión")
             with st.form("login_form"):
-                email = st.text_input("Correo electrónico")
-                password = st.text_input("Contraseña", type="password")
+                email = st.text_input("Correo electrónico", placeholder="tú@ejemplo.com")
+                password_column, forgot_column = st.columns([1.5, 1])
+                with password_column:
+                    password = st.text_input(
+                        "Contraseña", type="password", placeholder="••••••••"
+                    )
+                with forgot_column:
+                    st.markdown("<div style='height:1.95rem'></div>", unsafe_allow_html=True)
+                    forgot = st.form_submit_button("¿Has olvidado tu contraseña?")
                 remember = st.checkbox("Recordarme")
-                submitted = st.form_submit_button("Ingresar", type="primary", use_container_width=True)
-            if submitted:
+                submitted = st.form_submit_button("Acceso", type="primary", use_container_width=True)
+            if forgot:
+                st.session_state.auth_mode = "forgot"
+                st.rerun()
+            elif submitted:
                 usuario = db.obtener_usuario_por_email(email)
                 if usuario and verificar_password(password, usuario["password_hash"]):
                     iniciar_sesion(usuario)
@@ -431,15 +880,13 @@ def mostrar_autenticacion():
                     st.rerun()
                 else:
                     st.error("Correo o contraseña incorrectos.")
-        first, second = st.columns(2)
-        with first:
-            if st.button("¿Olvidaste tu contraseña?", use_container_width=True):
-                st.session_state.auth_mode = "forgot"
-                st.rerun()
-        with second:
-            if st.button("Crear cuenta", use_container_width=True):
-                st.session_state.auth_mode = "signup"
-                st.rerun()
+        st.markdown(
+            '<div class="tm-auth-footer">¿No tienes una cuenta?</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("Crea una", use_container_width=True):
+            st.session_state.auth_mode = "signup"
+            st.rerun()
 
 
 def mostrar_movimiento(transaccion, usuario_id, editable=False):
@@ -453,7 +900,10 @@ def mostrar_movimiento(transaccion, usuario_id, editable=False):
         columns = st.columns([2.2, 1.5, 1.4, 1.2] if editable else [2.5, 1.6, 1.3, 1.4])
         columns[0].markdown(f"**{description}**<br><span class='tm-muted'>{category}</span>", unsafe_allow_html=True)
         columns[1].markdown(f"<span class='tm-muted'>{fecha}</span>", unsafe_allow_html=True)
-        columns[2].markdown(f"<span class='{amount_class}'>{sign} ${transaccion['monto']:,.2f}</span>", unsafe_allow_html=True)
+        columns[2].markdown(
+            f"<span class='{amount_class}'>{sign} {formato_moneda(float(transaccion['monto']))}</span>",
+            unsafe_allow_html=True,
+        )
         if editable:
             if columns[3].button("Eliminar", key=f"delete_{transaccion['id']}"):
                 db.eliminar_transaccion(usuario_id, transaccion["id"])
@@ -486,7 +936,10 @@ def mostrar_presupuestos(usuario_id, mes_inicio, mes_siguiente):
         spent = float(budget["gastado"])
         limit = float(budget["limite"])
         percentage = spent / limit if limit else 0
-        st.markdown(f"**{html.escape(budget['categoria'])}** · ${spent:,.2f} de ${limit:,.2f}")
+        st.markdown(
+            f"**{html.escape(budget['categoria'])}** · "
+            f"{formato_moneda(spent)} de {formato_moneda(limit)}"
+        )
         st.progress(min(percentage, 1.0))
         if percentage >= 1:
             st.error(f"Límite superado por ${spent - limit:,.2f}.")
@@ -505,41 +958,120 @@ else:
     current_user = None
 
 if not current_user:
-    mostrar_autenticacion()
+    google_user, google_error = procesar_callback_google()
+    if google_user:
+        st.rerun()
+    mostrar_autenticacion(google_error)
     st.stop()
 
 usuario_id = current_user["id"]
 mes_inicio, mes_siguiente = rango_mes_actual()
-resumen = db.obtener_resumen_financiero(usuario_id, mes_inicio, mes_siguiente)
 categorias = db.listar_categorias() or CATEGORIAS_BASE
 
 st.sidebar.markdown("""
     <div class="tm-brand">
-        <div class="tm-brand-mark">T</div>
-        <div><div class="tm-brand-name">TM Finance</div><div class="tm-brand-caption">Control de gastos</div></div>
+        <div class="tm-brand-mark">$</div>
+        <div><div class="tm-brand-name">Gastos</div><div class="tm-brand-caption">Control personal</div></div>
     </div>
     """, unsafe_allow_html=True)
-st.sidebar.markdown(f"Hola, **{html.escape(current_user['username'])}**")
-menu = st.sidebar.radio("Navegación", ["Resumen", "Movimientos", "Presupuestos", "Administración"], label_visibility="collapsed", key="menu")
+if st.sidebar.button("＋  Nuevo gasto", type="primary", use_container_width=True):
+    st.session_state["menu"] = "Resumen"
+    st.session_state["show_add_transaction"] = True
+    st.rerun()
+
+menu_labels = {
+    "Resumen": "⌂   Inicio",
+    "Movimientos": "↗   Gastos",
+    "Presupuestos": "◷   Presupuestos",
+    "Administración": "▦   Categorías",
+}
+menu = st.sidebar.radio(
+    "Navegación",
+    list(menu_labels),
+    format_func=menu_labels.get,
+    label_visibility="collapsed",
+    key="menu",
+)
+username = html.escape(current_user["username"])
+email = html.escape(current_user["email"])
+initials = "".join(part[0] for part in current_user["username"].split()[:2]).upper()
+st.sidebar.markdown(
+    f"""
+    <div class="tm-profile">
+        <div class="tm-avatar">{html.escape(initials or "U")}</div>
+        <div>
+            <div class="tm-profile-name">{username}</div>
+            <div class="tm-profile-email">{email}</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 if st.sidebar.button("Cerrar sesión", use_container_width=True):
     st.session_state.pop("user_id", None)
     st.session_state.pop("username", None)
     st.session_state.pop("remember_me", None)
+    st.session_state.pop("show_add_transaction", None)
     st.session_state.auth_mode = "login"
     st.rerun()
 
 if menu == "Resumen":
-    st.markdown('<div class="tm-page-kicker">Tu dinero, en perspectiva</div>', unsafe_allow_html=True)
-    st.title("Resumen financiero")
-    st.markdown('<div class="tm-page-subtitle">Balance y actividad de tus finanzas personales.</div>', unsafe_allow_html=True)
-    kpi_balance, kpi_income, kpi_expenses = st.columns(3)
-    kpi_balance.metric("Balance total", f"${resumen['balance']:,.2f}")
-    kpi_income.metric("🟢 Total ingresos", f"${resumen['ingresos']:,.2f}")
-    kpi_expenses.metric("🔴 Total gastos", f"${resumen['gastos']:,.2f}")
+    month_options = [desplazar_mes(date.today(), offset) for offset in range(-11, 1)]
+    header_left, header_right = st.columns([2.2, 1], vertical_alignment="bottom")
+    with header_left:
+        st.markdown('<div class="tm-page-kicker">Hola, ' + username + '</div>', unsafe_allow_html=True)
+        st.title("Tu resumen")
+    with header_right:
+        mes_inicio = st.selectbox(
+            "Mes",
+            month_options,
+            index=len(month_options) - 1,
+            format_func=lambda mes: f"{MESES[mes.month - 1]} {mes.year}",
+            key="dashboard_month",
+        )
 
-    form_column, history_column = st.columns([.9, 1.1], gap="large")
-    with form_column:
-        st.subheader("Agregar transacción")
+    mes_siguiente = desplazar_mes(mes_inicio, 1)
+    mes_anterior = desplazar_mes(mes_inicio, -1)
+    seis_meses_inicio = desplazar_mes(mes_inicio, -5)
+    movimientos_tendencia = db.listar_transacciones(
+        usuario_id, seis_meses_inicio, mes_siguiente - timedelta(days=1)
+    )
+    movimientos_mes = [
+        movimiento for movimiento in movimientos_tendencia
+        if mes_inicio.isoformat() <= str(movimiento["fecha"]) < mes_siguiente.isoformat()
+    ]
+    gastos_mes = [
+        movimiento for movimiento in movimientos_mes if movimiento["tipo"] == "Gasto"
+    ]
+    total_gastado = sum(float(movimiento["monto"]) for movimiento in gastos_mes)
+    gastos_mes_anterior = db.listar_transacciones(
+        usuario_id, mes_anterior, mes_inicio - timedelta(days=1), tipo="Gasto"
+    )
+    total_mes_anterior = sum(float(movimiento["monto"]) for movimiento in gastos_mes_anterior)
+
+    if total_mes_anterior:
+        variacion = (total_gastado - total_mes_anterior) / total_mes_anterior * 100
+        comparacion = (
+            f"{'↑' if variacion > 0 else '↓'} {abs(variacion):.0f}% frente a "
+            f"{MESES[mes_anterior.month - 1].lower()}"
+        )
+    else:
+        comparacion = "Sin mes anterior para comparar"
+    st.markdown(
+        f"""
+        <div class="tm-hero-card">
+            <div class="tm-hero-label">Total gastado · {MESES[mes_inicio.month - 1]} {mes_inicio.year}</div>
+            <div class="tm-hero-value">{formato_moneda(total_gastado)}</div>
+            <div class="tm-hero-caption">{html.escape(comparacion)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.expander(
+        "＋  Registrar un movimiento",
+        expanded=st.session_state.get("show_add_transaction", False),
+    ):
         with st.container(border=True):
             with st.form("add_transaction", clear_on_submit=True):
                 tipo = st.selectbox("Tipo", ["Gasto", "Ingreso"])
@@ -554,42 +1086,67 @@ if menu == "Resumen":
             if submitted:
                 try:
                     db.registrar_transaccion(usuario_id, tipo, transaction_date, category, description, amount, payment_method)
-                    st.success("Transacción agregada.")
+                    st.session_state["show_add_transaction"] = False
                     st.rerun()
                 except ValueError as error:
                     st.error(str(error))
 
-    with history_column:
-        st.subheader("Movimientos recientes")
-        recent = db.listar_transacciones(usuario_id, limite=6)
-        if recent:
-            for transaction in recent:
-                mostrar_movimiento(transaction, usuario_id)
-        else:
-            st.info("Tus movimientos aparecerán aquí.")
-        if st.button("Ver todos los movimientos", use_container_width=True):
+    st.subheader("Tendencia")
+    with st.container(border=True):
+        st.caption("Últimos 6 meses")
+        puntos_tendencia = []
+        for mes in (desplazar_mes(mes_inicio, offset) for offset in range(-5, 1)):
+            total = sum(
+                float(movimiento["monto"])
+                for movimiento in movimientos_tendencia
+                if movimiento["tipo"] == "Gasto"
+                and mes.isoformat() <= str(movimiento["fecha"]) < desplazar_mes(mes, 1).isoformat()
+            )
+            puntos_tendencia.append((f"{MESES_CORTOS[mes.month - 1]}", total))
+        tendencia = pd.DataFrame(puntos_tendencia, columns=["Mes", "Gastos"]).set_index("Mes")
+        st.line_chart(tendencia, color="#006B4D")
+
+    category_totals = {}
+    for movement in gastos_mes:
+        category_totals[movement["categoria"]] = (
+            category_totals.get(movement["categoria"], 0) + float(movement["monto"])
+        )
+    category_rows = [
+        {"categoria": categoria, "total": total}
+        for categoria, total in sorted(category_totals.items(), key=lambda item: item[1], reverse=True)
+    ]
+    recent = gastos_mes[:5]
+    breakdown_column, recent_column = st.columns([1, 1], gap="large")
+    with breakdown_column:
+        st.subheader("Desglose")
+        with st.container(border=True):
+            if category_rows:
+                st.vega_lite_chart(pd.DataFrame(category_rows), {
+                    "mark": {"type": "arc", "innerRadius": 58},
+                    "encoding": {
+                        "theta": {"field": "total", "type": "quantitative"},
+                        "color": {"field": "categoria", "type": "nominal"},
+                        "tooltip": [
+                            {"field": "categoria", "type": "nominal"},
+                            {"field": "total", "type": "quantitative", "format": "$,.2f"},
+                        ],
+                    },
+                    "view": {"stroke": None},
+                }, width="stretch")
+            else:
+                st.info("Registra gastos este mes para ver el desglose por categoría.")
+    with recent_column:
+        recent_header, view_all = st.columns([1, 1], vertical_alignment="center")
+        recent_header.subheader("Recientes")
+        if view_all.button("Ver todos →", key="dashboard_all_expenses"):
             st.session_state["menu"] = "Movimientos"
             st.rerun()
-
-    chart_column, budget_column = st.columns([1.1, .9], gap="large")
-    with chart_column:
-        st.subheader("Gastos por categoría")
-        if resumen["categorias"]:
-            chart_data = pd.DataFrame(resumen["categorias"])
-            st.vega_lite_chart(chart_data, {
-                "mark": {"type": "arc", "innerRadius": 54},
-                "encoding": {
-                    "theta": {"field": "total", "type": "quantitative"},
-                    "color": {"field": "categoria", "type": "nominal", "scale": {"range": ["#188b7b", "#d1a74b", "#e06d5d", "#519c99", "#83a86f", "#6b8290"]}},
-                    "tooltip": [{"field": "categoria", "type": "nominal"}, {"field": "total", "type": "quantitative", "format": "$,.2f"}],
-                },
-                "view": {"stroke": None},
-            }, width="stretch")
-        else:
-            st.info("Registra gastos para ver el desglose por categoría.")
-    with budget_column:
-        st.subheader("Presupuestos del mes")
-        mostrar_presupuestos(usuario_id, mes_inicio, mes_siguiente)
+        with st.container(border=True):
+            if recent:
+                for transaction in recent:
+                    mostrar_movimiento(transaction, usuario_id)
+            else:
+                st.info("Tus gastos recientes aparecerán aquí.")
 
 elif menu == "Movimientos":
     st.markdown('<div class="tm-page-kicker">Historial de actividad</div>', unsafe_allow_html=True)
@@ -631,7 +1188,7 @@ elif menu == "Presupuestos":
 
 else:
     st.markdown('<div class="tm-page-kicker">Tu cuenta</div>', unsafe_allow_html=True)
-    st.title("Administración")
+    st.title("Categorías y cuenta")
     with st.container(border=True):
         st.subheader("Categorías")
         with st.form("add_category", clear_on_submit=True):

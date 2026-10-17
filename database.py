@@ -1,6 +1,8 @@
 import os
 import sqlite3
 from contextlib import contextmanager
+from math import isfinite
+from numbers import Real
 
 import pandas as pd
 
@@ -31,6 +33,16 @@ def _connection():
 
 def _value(value):
     return value.isoformat() if hasattr(value, "isoformat") else value
+
+
+def _validar_monto_positivo(monto, mensaje):
+    if (
+        isinstance(monto, bool)
+        or not isinstance(monto, Real)
+        or not isfinite(monto)
+        or monto <= 0
+    ):
+        raise ValueError(mensaje)
 
 
 def _rows(query, params=()):
@@ -140,16 +152,65 @@ def crear_usuario(username, email, password_hash):
             raise ValueError("Ese nombre de usuario o correo ya está registrado.") from error
         usuario_id = cursor.lastrowid
         if primera_cuenta:
-            conn.execute("""
-                INSERT INTO transacciones (usuario_id, tipo, monto, categoria, fecha, descripcion, metodo_pago)
-                SELECT ?, 'Gasto', monto, categoria, fecha, descripcion, metodo_pago FROM gastos
-            """, (usuario_id,))
-            budget_columns = {row["name"] for row in conn.execute("PRAGMA table_info(presupuestos)")}
-            budget_column = "monto_limite" if "monto_limite" in budget_columns else "limite"
-            conn.execute(f"""
-                INSERT OR IGNORE INTO presupuestos_usuario (usuario_id, categoria, monto_limite)
-                SELECT ?, categoria, {budget_column} FROM presupuestos
-            """, (usuario_id,))
+            _migrar_datos_heredados(conn, usuario_id)
+    return obtener_usuario_por_id(usuario_id)
+
+
+def _migrar_datos_heredados(conn, usuario_id):
+    conn.execute("""
+        INSERT INTO transacciones (usuario_id, tipo, monto, categoria, fecha, descripcion, metodo_pago)
+        SELECT ?, 'Gasto', monto, categoria, fecha, descripcion, metodo_pago FROM gastos
+    """, (usuario_id,))
+    budget_columns = {row["name"] for row in conn.execute("PRAGMA table_info(presupuestos)")}
+    budget_column = "monto_limite" if "monto_limite" in budget_columns else "limite"
+    conn.execute(f"""
+        INSERT OR IGNORE INTO presupuestos_usuario (usuario_id, categoria, monto_limite)
+        SELECT ?, categoria, {budget_column} FROM presupuestos
+    """, (usuario_id,))
+
+
+def obtener_o_crear_usuario_google(email, nombre, password_hash):
+    email = email.strip().lower()
+    nombre = nombre.strip()
+    if not email or not nombre or not password_hash:
+        raise ValueError("Google no proporcionó los datos necesarios para crear la cuenta.")
+
+    with _connection() as conn:
+        usuario = conn.execute(
+            "SELECT id FROM usuarios WHERE email = ? COLLATE NOCASE", (email,)
+        ).fetchone()
+        if usuario:
+            usuario_id = usuario["id"]
+        else:
+            primera_cuenta = conn.execute("SELECT COUNT(*) FROM usuarios").fetchone()[0] == 0
+            nombre_base = nombre[:40]
+            nombre_usuario = nombre_base
+            sufijo = 2
+            while conn.execute(
+                "SELECT 1 FROM usuarios WHERE username = ? COLLATE NOCASE",
+                (nombre_usuario,),
+            ).fetchone():
+                marca = f" {sufijo}"
+                nombre_usuario = f"{nombre_base[:40 - len(marca)]}{marca}"
+                sufijo += 1
+
+            try:
+                cursor = conn.execute(
+                    "INSERT INTO usuarios (username, email, password_hash) VALUES (?, ?, ?)",
+                    (nombre_usuario, email, password_hash),
+                )
+            except sqlite3.IntegrityError as error:
+                usuario = conn.execute(
+                    "SELECT id FROM usuarios WHERE email = ? COLLATE NOCASE", (email,)
+                ).fetchone()
+                if not usuario:
+                    raise ValueError("No se pudo crear la cuenta de Google.") from error
+                usuario_id = usuario["id"]
+            else:
+                usuario_id = cursor.lastrowid
+                if primera_cuenta:
+                    _migrar_datos_heredados(conn, usuario_id)
+
     return obtener_usuario_por_id(usuario_id)
 
 
@@ -196,8 +257,7 @@ def cambiar_password(usuario_id, password_hash):
 def registrar_transaccion(usuario_id, tipo, fecha, categoria, descripcion, monto, metodo_pago="Efectivo"):
     if tipo not in ("Ingreso", "Gasto"):
         raise ValueError("El tipo debe ser Ingreso o Gasto.")
-    if monto <= 0:
-        raise ValueError("El monto debe ser mayor a cero.")
+    _validar_monto_positivo(monto, "El monto debe ser mayor a cero.")
     categoria = categoria.strip()
     if not categoria:
         raise ValueError("La categoría es obligatoria.")
@@ -210,6 +270,10 @@ def registrar_transaccion(usuario_id, tipo, fecha, categoria, descripcion, monto
 
 
 def listar_transacciones(usuario_id, fecha_inicio=None, fecha_fin=None, categoria=None, tipo=None, limite=None):
+    if limite is not None and (
+        isinstance(limite, bool) or not isinstance(limite, int) or limite < 0
+    ):
+        raise ValueError("El límite debe ser un entero mayor o igual a cero.")
     clauses = ["usuario_id = ?"]
     params = [usuario_id]
     if fecha_inicio:
@@ -224,8 +288,8 @@ def listar_transacciones(usuario_id, fecha_inicio=None, fecha_fin=None, categori
     if tipo and tipo != "Todos":
         clauses.append("tipo = ?")
         params.append(tipo)
-    limit_sql = " LIMIT ?" if limite else ""
-    if limite:
+    limit_sql = " LIMIT ?" if limite is not None else ""
+    if limite is not None:
         params.append(limite)
     return _rows(f"""
         SELECT id, tipo, monto, categoria, fecha, descripcion, metodo_pago
@@ -236,8 +300,9 @@ def listar_transacciones(usuario_id, fecha_inicio=None, fecha_fin=None, categori
 
 def actualizar_transaccion(usuario_id, transaccion_id, fecha, categoria, descripcion, monto, metodo_pago, tipo="Gasto"):
     categoria = categoria.strip()
-    if not categoria or monto <= 0 or tipo not in ("Ingreso", "Gasto"):
-        raise ValueError("Indica una categoría, un tipo válido y un monto mayor a cero.")
+    if not categoria or tipo not in ("Ingreso", "Gasto"):
+        raise ValueError("Indica una categoría y un tipo válido.")
+    _validar_monto_positivo(monto, "El monto debe ser mayor a cero.")
     agregar_categoria(categoria)
     with _connection() as conn:
         cursor = conn.execute("""
@@ -282,8 +347,9 @@ def obtener_resumen_financiero(usuario_id, mes_inicio, mes_siguiente):
 
 def guardar_presupuesto_usuario(usuario_id, categoria, limite):
     categoria = categoria.strip()
-    if not categoria or limite <= 0:
+    if not categoria:
         raise ValueError("Indica una categoría y un límite mayor a cero.")
+    _validar_monto_positivo(limite, "Indica una categoría y un límite mayor a cero.")
     agregar_categoria(categoria)
     with _connection() as conn:
         conn.execute("""
@@ -331,8 +397,7 @@ def eliminar_categoria(nombre):
 
 
 def registrar_gasto(fecha, categoria, descripcion, monto, metodo_pago="Efectivo"):
-    if monto <= 0:
-        raise ValueError("El monto debe ser mayor a cero.")
+    _validar_monto_positivo(monto, "El monto debe ser mayor a cero.")
     categoria = categoria.strip()
     if not categoria:
         raise ValueError("La categoría es obligatoria.")
@@ -370,8 +435,7 @@ def actualizar_gasto(gasto_id, fecha, categoria, descripcion, monto, metodo_pago
     categoria = categoria.strip()
     if not categoria:
         raise ValueError("La categoría es obligatoria.")
-    if monto <= 0:
-        raise ValueError("El monto debe ser mayor a cero.")
+    _validar_monto_positivo(monto, "El monto debe ser mayor a cero.")
     agregar_categoria(categoria)
     with _connection() as conn:
         cursor = conn.execute("""
@@ -407,8 +471,7 @@ def guardar_presupuesto(categoria, limite):
     categoria = categoria.strip()
     if not categoria:
         raise ValueError("La categoría es obligatoria.")
-    if limite <= 0:
-        raise ValueError("El límite debe ser mayor a cero.")
+    _validar_monto_positivo(limite, "El límite debe ser mayor a cero.")
     agregar_categoria(categoria)
     with _connection() as conn:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(presupuestos)")}
