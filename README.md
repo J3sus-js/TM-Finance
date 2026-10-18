@@ -1,5 +1,17 @@
 # TM Finance
 
+Aplicación web para organizar gastos personales, consultar resúmenes mensuales y
+planificar presupuestos por categoría.
+
+**Desarrollado por Jesús Monroy**
+
+### Tecnologías
+
+- **Python** — lógica de la aplicación y acceso a datos.
+- **Streamlit** — interfaz web interactiva.
+- **SQLite 3** — almacenamiento local de cuentas, movimientos y presupuestos.
+- **Pandas** — preparación de datos para resúmenes y gráficos.
+
 ## Ejecutar
 
 Instala las dependencias y arranca la aplicación web:
@@ -20,8 +32,9 @@ meses, desglose por categoría y movimientos recientes. El selector del resumen
 permite consultar cualquiera de los últimos doce meses.
 Cada usuario puede alternar entre los temas **Claro** y **Oscuro** con el botón
 flotante de sol/luna; la selección se mantiene durante la sesión de Streamlit.
-El botón tiene animaciones suaves, igual que las tarjetas, y respeta la
-preferencia del dispositivo para reducir movimiento.
+La interfaz usa una entrada breve en el resumen y microinteracciones discretas
+en tarjetas y controles, sin movimiento continuo; respeta la preferencia del
+dispositivo para reducir movimiento.
 
 ## Cuentas y datos
 
@@ -75,9 +88,10 @@ GOOGLE_REDIRECT_URI = "https://tmfinance.streamlit.app/"
 
 No publiques el secreto del cliente, no lo agregues al repositorio ni lo pegues
 en mensajes. El inicio de sesión usa OAuth con PKCE, valida el estado de la
-solicitud y solo crea o vincula cuentas con correo verificado por Google. Para
-desarrollo local, registra también `http://localhost:8501/` como URI de retorno
-autorizada y configura esa misma dirección en `GOOGLE_REDIRECT_URI`.
+solicitud contra la sesión que la inició y consume cada transacción una sola vez;
+solo crea o vincula cuentas con correo verificado por Google. Para desarrollo
+local, registra también `http://localhost:8501/` como URI de retorno autorizada y
+configura esa misma dirección en `GOOGLE_REDIRECT_URI`.
 
 La utilidad `control_de_gastos.py` es un programa de consola heredado y no usa el
 login de la aplicación web. No la expongas como servicio público.

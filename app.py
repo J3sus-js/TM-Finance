@@ -104,10 +104,10 @@ st.markdown("""
             border-radius: 16px;
             padding: 1.05rem 1.15rem;
             box-shadow: 0 8px 24px var(--tm-shadow);
-            transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+            transition: transform .2s cubic-bezier(.2, .8, .2, 1), box-shadow .2s ease, border-color .2s ease;
         }
         [data-testid="stMetric"]:hover {
-            transform: translateY(-3px);
+            transform: translateY(-2px);
             border-color: #c4d9cf;
             box-shadow: 0 12px 28px var(--tm-shadow);
         }
@@ -173,10 +173,6 @@ st.markdown("""
             right: 1.25rem;
             z-index: 1000;
             width: 3.15rem;
-            animation: tm-float 4s ease-in-out infinite;
-        }
-        .st-key-theme_toggle:hover {
-            animation-play-state: paused;
         }
         .st-key-theme_toggle button {
             position: relative;
@@ -193,22 +189,15 @@ st.markdown("""
             color: var(--tm-accent);
             box-shadow: 0 6px 20px var(--tm-shadow);
             font-size: 1.3rem;
-            animation: tm-enter .45s ease both;
-            transition: transform .25s ease, background .25s ease, box-shadow .25s ease;
-        }
-        .st-key-theme_toggle button::before {
-            position: absolute;
-            inset: -5px;
-            border: 1px solid color-mix(in srgb, var(--tm-accent) 35%, transparent);
-            border-radius: inherit;
-            content: "";
-            pointer-events: none;
-            animation: tm-orbit-pulse 3s ease-out infinite;
+            transition: transform .2s cubic-bezier(.2, .8, .2, 1), background .2s ease, box-shadow .2s ease;
         }
         .st-key-theme_toggle button:hover {
-            transform: scale(1.09) rotate(-12deg);
+            transform: translateY(-2px);
             background: var(--tm-soft);
-            box-shadow: 0 9px 26px var(--tm-shadow);
+            box-shadow: 0 9px 24px var(--tm-shadow);
+        }
+        .st-key-theme_toggle button:active {
+            transform: translateY(0) scale(.97);
         }
         .st-key-theme_toggle button:focus-visible {
             outline: 3px solid color-mix(in srgb, var(--tm-accent) 42%, transparent);
@@ -352,7 +341,10 @@ st.markdown("""
             border-radius: 16px;
             background: var(--tm-white);
             box-shadow: 0 8px 24px var(--tm-shadow);
-            animation: tm-enter .35s ease both;
+            transition:
+                transform .22s cubic-bezier(.2, .8, .2, 1),
+                box-shadow .22s ease,
+                border-color .22s ease;
         }
         .tm-hero-card {
             margin: .5rem 0 1.25rem;
@@ -412,45 +404,34 @@ st.markdown("""
             border-color: color-mix(in srgb, var(--tm-accent) 17%, var(--tm-line));
             box-shadow: 0 12px 30px var(--tm-shadow);
             transform: translateY(-2px);
-            transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
         }
         .tm-hero-card {
             position: relative;
             overflow: hidden;
-            background-size: 150% 150%;
-            animation: tm-enter .45s ease both, tm-hero-shift 9s ease-in-out infinite alternate;
+            animation: tm-rise-in .42s cubic-bezier(.2, .8, .2, 1) both;
         }
         .tm-hero-card::after {
             position: absolute;
             inset: 0;
-            background: linear-gradient(110deg, transparent 25%, rgba(255, 255, 255, .12) 48%, transparent 68%);
+            background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .12) 50%, transparent 70%);
             content: "";
             pointer-events: none;
-            transform: translateX(-110%);
-            animation: tm-sheen 1.2s .2s ease-out both;
+            opacity: 0;
+            transform: translateX(-100%);
+            animation: tm-sheen .8s .12s ease-out both;
         }
         .tm-positive { color: var(--tm-positive); font-weight: 600; }
         .tm-negative { color: var(--tm-negative); font-weight: 600; }
         .tm-muted { color: var(--tm-muted); font-size: .82rem; }
 
-        @keyframes tm-enter {
-            from { opacity: 0; transform: translateY(8px); }
+        @keyframes tm-rise-in {
+            from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        @keyframes tm-float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-5px); }
-        }
-        @keyframes tm-orbit-pulse {
-            0% { opacity: .55; transform: scale(.92); }
-            80%, 100% { opacity: 0; transform: scale(1.28); }
-        }
-        @keyframes tm-hero-shift {
-            from { background-position: 0% 50%; }
-            to { background-position: 100% 50%; }
-        }
         @keyframes tm-sheen {
-            to { transform: translateX(110%); }
+            0% { opacity: 0; transform: translateX(-100%); }
+            20% { opacity: 1; }
+            100% { opacity: 0; transform: translateX(100%); }
         }
 
         @media (max-width: 768px) {
@@ -695,6 +676,13 @@ def procesar_callback_google():
         return None, None
 
     st.query_params.clear()
+    try:
+        code_verifier = google_auth.consume_authorization_request(
+            st.session_state, state
+        )
+    except google_auth.GoogleAuthError as error:
+        return None, str(error)
+
     if provider_error:
         return None, "No se completó el acceso con Google."
     if not code or not state:
@@ -703,7 +691,7 @@ def procesar_callback_google():
     client_id, client_secret, redirect_uri = configuracion_google()
     try:
         profile = google_auth.user_profile(
-            code, state, client_id, client_secret, redirect_uri
+            code, state, code_verifier, client_id, client_secret, redirect_uri
         )
         usuario = db.obtener_o_crear_usuario_google(
             profile["email"],
@@ -721,12 +709,16 @@ def mostrar_acceso_google(label):
     client_id, client_secret, redirect_uri = configuracion_google()
     if client_id and client_secret and redirect_uri:
         try:
-            url = google_auth.authorization_url(
+            url, state, code_verifier = google_auth.authorization_request(
                 client_id, client_secret, redirect_uri
             )
         except google_auth.GoogleAuthError as error:
             st.error(str(error))
         else:
+            st.session_state["google_oauth_transaction"] = {
+                "state": state,
+                "code_verifier": code_verifier,
+            }
             st.link_button(f"G   {label}", url, use_container_width=True)
     else:
         st.button(f"G   {label}", disabled=True, use_container_width=True)

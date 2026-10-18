@@ -38,35 +38,48 @@ def _signed_state(client_secret, timestamp, nonce):
     return f"{message}.{signature}"
 
 
-def _code_verifier(client_secret, nonce):
-    digest = hmac.new(
-        client_secret.encode(), f"pkce:{nonce}".encode(), hashlib.sha256
-    ).digest()
-    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
-
-
 def _code_challenge(verifier):
     digest = hashlib.sha256(verifier.encode()).digest()
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
-def authorization_url(client_id, client_secret, redirect_uri, now=None):
+def authorization_request(client_id, client_secret, redirect_uri, now=None):
     _validate_configuration(client_id, client_secret, redirect_uri)
     timestamp = int(time.time() if now is None else now)
     nonce = secrets.token_urlsafe(32)
-    verifier = _code_verifier(client_secret, nonce)
+    verifier = secrets.token_urlsafe(64)
+    state = _signed_state(client_secret, timestamp, nonce)
     parameters = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": "openid email profile",
-        "state": _signed_state(client_secret, timestamp, nonce),
+        "state": state,
         "code_challenge": _code_challenge(verifier),
         "code_challenge_method": "S256",
         "access_type": "online",
         "prompt": "select_account",
     }
-    return f"{AUTHORIZATION_ENDPOINT}?{urlencode(parameters)}"
+    return f"{AUTHORIZATION_ENDPOINT}?{urlencode(parameters)}", state, verifier
+
+
+def consume_authorization_request(transaction_store, state):
+    transaction = transaction_store.get("google_oauth_transaction")
+    if not isinstance(transaction, dict):
+        raise GoogleAuthError("El inicio con Google expiró o no es válido. Inténtalo de nuevo.")
+
+    expected_state = transaction.get("state")
+    verifier = transaction.get("code_verifier")
+    if (
+        not isinstance(state, str)
+        or not isinstance(expected_state, str)
+        or not hmac.compare_digest(state, expected_state)
+        or not isinstance(verifier, str)
+    ):
+        raise GoogleAuthError("La verificación de Google no es válida. Inténtalo de nuevo.")
+
+    transaction_store.pop("google_oauth_transaction")
+    return verifier
 
 
 def _verified_state(client_secret, state, now=None):
@@ -82,7 +95,6 @@ def _verified_state(client_secret, state, now=None):
     expected = _signed_state(client_secret, timestamp, nonce).rsplit(".", 1)[1]
     if not hmac.compare_digest(signature, expected):
         raise GoogleAuthError("La verificación de Google no es válida. Inténtalo de nuevo.")
-    return nonce
 
 
 def _post_form(url, values):
@@ -110,15 +122,23 @@ def _read_json(request):
     return result
 
 
-def user_profile(code, state, client_id, client_secret, redirect_uri):
+def user_profile(code, state, code_verifier, client_id, client_secret, redirect_uri):
     _validate_configuration(client_id, client_secret, redirect_uri)
-    nonce = _verified_state(client_secret, state)
-    verifier = _code_verifier(client_secret, nonce)
+    _verified_state(client_secret, state)
+    if (
+        not isinstance(code_verifier, str)
+        or not 43 <= len(code_verifier) <= 128
+        or any(
+            character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
+            for character in code_verifier
+        )
+    ):
+        raise GoogleAuthError("La solicitud de inicio con Google no es válida. Inténtalo de nuevo.")
     token_data = _post_form(TOKEN_ENDPOINT, {
         "client_id": client_id,
         "client_secret": client_secret,
         "code": code,
-        "code_verifier": verifier,
+        "code_verifier": code_verifier,
         "grant_type": "authorization_code",
         "redirect_uri": redirect_uri,
     })
