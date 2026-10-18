@@ -3,7 +3,7 @@
 Aplicación web para organizar gastos personales, consultar resúmenes mensuales y
 planificar presupuestos por categoría.
 
-**Desarrollado por Jesús Monroy**
+**Desarrollado por Jesús Monroy** · [Abrir aplicación](https://tmfinance.streamlit.app/)
 
 ### Tecnologías
 
