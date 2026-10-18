@@ -24,7 +24,7 @@ METODOS_PAGO = ["Efectivo", "Tarjeta de Crédito", "Tarjeta de Débito", "Transf
 # CONFIGURACIÓN DE ESTILO Y PÁGINA
 # ==========================================
 st.set_page_config(
-    page_title="Gastos · Control personal",
+    page_title="Finanzas personales · TM Finance",
     page_icon="💸", 
     layout="wide",
     initial_sidebar_state="auto"
@@ -82,6 +82,16 @@ st.markdown("""
             color: var(--tm-muted);
             font-size: .9rem;
         }
+        [data-testid="stSidebar"] [data-testid="stRadio"] input[type="radio"] {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:focus-visible) {
+            outline: 3px solid color-mix(in srgb, var(--tm-accent) 55%, transparent);
+            outline-offset: 2px;
+        }
         [data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] {
             gap: .35rem;
         }
@@ -113,7 +123,7 @@ st.markdown("""
         }
         [data-testid="stMetricLabel"] p {
             color: var(--tm-muted);
-            font-size: .82rem;
+            font-size: .875rem;
             font-weight: 500;
         }
         [data-testid="stMetricValue"] {
@@ -143,6 +153,10 @@ st.markdown("""
             font-weight: 700;
             box-shadow: 0 4px 12px rgba(0, 107, 77, .16);
             transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+        }
+        [data-testid="stBaseButton-primary"] *,
+        [data-testid="stBaseButton-primary"]:hover * {
+            color: #ffffff !important;
         }
         [data-testid="stBaseButton-primary"]:hover {
             background: var(--tm-accent-dark);
@@ -260,12 +274,12 @@ st.markdown("""
         .tm-brand-caption {
             margin-top: .08rem;
             color: var(--tm-muted);
-            font-size: .8rem;
+            font-size: .875rem;
         }
         .tm-page-kicker {
             margin-bottom: .35rem;
             color: var(--tm-muted);
-            font-size: .8rem;
+            font-size: .875rem;
             font-weight: 700;
             letter-spacing: .08em;
             text-transform: uppercase;
@@ -304,7 +318,7 @@ st.markdown("""
         .tm-auth-caption {
             margin: .3rem 0 1.15rem;
             color: var(--tm-muted);
-            font-size: .88rem;
+            font-size: .9rem;
             text-align: center;
         }
         [data-testid="stLinkButton"] a {
@@ -327,7 +341,7 @@ st.markdown("""
             gap: .8rem;
             margin: .9rem 0;
             color: var(--tm-muted);
-            font-size: .8rem;
+            font-size: .875rem;
         }
         .tm-auth-separator::before,
         .tm-auth-separator::after {
@@ -339,13 +353,13 @@ st.markdown("""
         .tm-auth-footer {
             margin: .9rem 0 0;
             color: var(--tm-muted);
-            font-size: .85rem;
+            font-size: .875rem;
             text-align: center;
         }
         .tm-auth-hint {
             margin: -.5rem 0 .5rem;
             color: var(--tm-muted);
-            font-size: .8rem;
+            font-size: .875rem;
         }
         [data-testid="stVerticalBlockBorderWrapper"] {
             border-color: var(--tm-line);
@@ -356,56 +370,6 @@ st.markdown("""
                 transform .22s cubic-bezier(.2, .8, .2, 1),
                 box-shadow .22s ease,
                 border-color .22s ease;
-        }
-        .tm-hero-card {
-            margin: .5rem 0 1.25rem;
-            padding: 1.65rem 1.8rem;
-            border: 1px solid rgba(255, 255, 255, .12);
-            border-radius: 18px;
-            background: linear-gradient(120deg, #006b4d, #087a58);
-            box-shadow: 0 12px 26px rgba(0, 107, 77, .16);
-            color: #ffffff;
-        }
-        .tm-hero-label {
-            color: rgba(255, 255, 255, .78);
-            font-size: .88rem;
-            font-weight: 500;
-        }
-        .tm-hero-value {
-            margin: .4rem 0;
-            color: #ffffff;
-            font: 700 clamp(2rem, 5vw, 2.8rem) 'Sora', sans-serif;
-            letter-spacing: -.04em;
-        }
-        .tm-hero-caption {
-            color: rgba(255, 255, 255, .76);
-            font-size: .82rem;
-        }
-        .tm-hero-breakdown {
-            display: flex;
-            flex-wrap: wrap;
-            gap: .5rem 1.5rem;
-            margin-top: 1rem;
-        }
-        .tm-hero-breakdown-item {
-            display: flex;
-            flex-direction: column;
-            gap: .15rem;
-        }
-        .tm-hero-breakdown-label {
-            color: rgba(255, 255, 255, .82);
-            font-size: .8rem;
-        }
-        .tm-hero-breakdown-value {
-            color: #ffffff;
-            font-size: 1rem;
-            font-weight: 700;
-        }
-        .tm-hero-comparison {
-            margin-top: .9rem;
-            color: #ffffff;
-            font-size: .9rem;
-            font-weight: 600;
         }
         .tm-profile {
             display: flex;
@@ -428,13 +392,13 @@ st.markdown("""
         }
         .tm-profile-name {
             color: var(--tm-ink);
-            font-size: .84rem;
+            font-size: .875rem;
             font-weight: 600;
         }
         .tm-profile-email {
             overflow: hidden;
             color: var(--tm-muted);
-            font-size: .8rem;
+            font-size: .875rem;
             text-overflow: ellipsis;
         }
         [data-testid="stVerticalBlockBorderWrapper"]:hover {
@@ -442,34 +406,9 @@ st.markdown("""
             box-shadow: 0 12px 30px var(--tm-shadow);
             transform: translateY(-2px);
         }
-        .tm-hero-card {
-            position: relative;
-            overflow: hidden;
-            animation: tm-rise-in .42s cubic-bezier(.2, .8, .2, 1) both;
-        }
-        .tm-hero-card::after {
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .12) 50%, transparent 70%);
-            content: "";
-            pointer-events: none;
-            opacity: 0;
-            transform: translateX(-100%);
-            animation: tm-sheen .8s .12s ease-out both;
-        }
         .tm-positive { color: var(--tm-positive); font-weight: 600; }
         .tm-negative { color: var(--tm-negative); font-weight: 600; }
-        .tm-muted { color: var(--tm-muted); font-size: .82rem; }
-
-        @keyframes tm-rise-in {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes tm-sheen {
-            0% { opacity: 0; transform: translateX(-100%); }
-            20% { opacity: 1; }
-            100% { opacity: 0; transform: translateX(100%); }
-        }
+        .tm-muted { color: var(--tm-muted); font-size: .875rem; }
 
         @media (max-width: 768px) {
             [data-testid="stAppViewContainer"] .block-container {
@@ -492,10 +431,6 @@ st.markdown("""
                 width: calc(50% - .25rem) !important;
                 min-width: 0;
                 flex: 1 1 calc(50% - .25rem) !important;
-            }
-            .tm-hero-card {
-                padding: 1.3rem 1.25rem;
-                border-radius: 15px;
             }
             .st-key-theme_toggle {
                 top: .65rem;
@@ -547,17 +482,14 @@ st.markdown("""
                 padding: 1rem .75rem 2rem;
             }
             [data-testid="stMetricLabel"] p {
-                font-size: .8rem;
+                font-size: .875rem;
             }
             .tm-page-subtitle {
-                font-size: .88rem;
+                font-size: .9rem;
             }
             .tm-profile {
                 padding-right: .25rem;
                 padding-left: .25rem;
-            }
-            .tm-hero-breakdown {
-                gap: .75rem 1rem;
             }
         }
 
@@ -580,7 +512,7 @@ if st.session_state.get("appearance") == "Oscuro":
                 --tm-ink: #edf4ef;
                 --tm-muted: #a0ada6;
                 --tm-accent: #24a875;
-                --tm-accent-dark: #087a53;
+                --tm-accent-dark: #00553d;
                 --tm-canvas: #111714;
                 --tm-line: #2b3932;
                 --tm-control-line: #405147;
@@ -604,10 +536,11 @@ if st.session_state.get("appearance") == "Oscuro":
                 background: var(--tm-accent-dark);
             }
             [data-testid="stBaseButton-primary"] {
-                color: #10231a;
-            }
-            [data-testid="stBaseButton-primary"]:hover {
                 color: #ffffff;
+            }
+            [data-testid="stBaseButton-primary"] *,
+            [data-testid="stBaseButton-primary"]:hover * {
+                color: #ffffff !important;
             }
         </style>
     """, unsafe_allow_html=True)
@@ -655,6 +588,35 @@ def formato_moneda(monto):
 def solicitar_nuevo_movimiento():
     st.session_state["menu"] = "Resumen"
     st.session_state["show_add_transaction"] = True
+
+
+def mostrar_formulario_movimiento(usuario_id, categorias):
+    with st.expander(
+        "Registrar un movimiento",
+        expanded=st.session_state.get("show_add_transaction", False),
+    ):
+        with st.container(border=True):
+            with st.form("add_transaction", clear_on_submit=True):
+                tipo = st.selectbox("Tipo", ["Gasto", "Ingreso"])
+                amount = st.number_input("Monto", min_value=0.01, value=0.01, step=1.0, format="%.2f")
+                category = st.selectbox("Categoría", [*categorias, "Nueva categoría..."])
+                if category == "Nueva categoría...":
+                    category = st.text_input("Nombre de la categoría")
+                transaction_date = st.date_input("Fecha", value=date.today())
+                description = st.text_input("Descripción", max_chars=120)
+                payment_method = st.selectbox("Método de pago", METODOS_PAGO)
+                submitted = st.form_submit_button(
+                    "Agregar transacción", type="primary", use_container_width=True
+                )
+            if submitted:
+                try:
+                    db.registrar_transaccion(
+                        usuario_id, tipo, transaction_date, category, description, amount, payment_method
+                    )
+                    st.session_state["show_add_transaction"] = False
+                    st.rerun()
+                except ValueError as error:
+                    st.error(str(error))
 
 
 PASSWORD_ITERATIONS = 310_000
@@ -808,7 +770,7 @@ def mostrar_autenticacion(error_google=None):
         st.markdown(f"""
             <div class="tm-auth-brand">
                 <div class="tm-auth-icon">{icon}</div>
-                <div class="tm-auth-brand-name">Gastos · Control personal</div>
+                <div class="tm-auth-brand-name">TM Finance · Finanzas personales</div>
                 <div class="tm-auth-title">{title}</div>
                 <div class="tm-auth-caption">{subtitle}</div>
             </div>
@@ -1025,20 +987,22 @@ if not current_user:
 usuario_id = current_user["id"]
 mes_inicio, mes_siguiente = rango_mes_actual()
 categorias = db.listar_categorias() or CATEGORIAS_BASE
+tiene_movimientos = bool(db.listar_transacciones(usuario_id, limite=1))
 
 st.sidebar.markdown("""
     <div class="tm-brand">
         <div class="tm-brand-mark">$</div>
-        <div><div class="tm-brand-name">Gastos</div><div class="tm-brand-caption">Control personal</div></div>
+        <div><div class="tm-brand-name">TM Finance</div><div class="tm-brand-caption">Finanzas personales</div></div>
     </div>
     """, unsafe_allow_html=True)
-if st.sidebar.button("＋  Nuevo gasto", type="primary", use_container_width=True):
-    solicitar_nuevo_movimiento()
-    st.rerun()
+if tiene_movimientos:
+    if st.sidebar.button("＋  Nuevo movimiento", type="primary", use_container_width=True):
+        solicitar_nuevo_movimiento()
+        st.rerun()
 
 menu_labels = {
     "Resumen": "⌂   Inicio",
-    "Movimientos": "↗   Gastos",
+    "Movimientos": "↗   Movimientos",
     "Presupuestos": "◷   Presupuestos",
     "Administración": "▦   Categorías",
 }
@@ -1073,6 +1037,19 @@ if st.sidebar.button("Cerrar sesión", use_container_width=True):
     st.rerun()
 
 if menu == "Resumen":
+    if not tiene_movimientos:
+        st.markdown('<div class="tm-page-kicker">Hola, ' + username + '</div>', unsafe_allow_html=True)
+        st.title("Tu resumen")
+        with st.container(border=True):
+            st.subheader("Aún no tienes movimientos")
+            st.write("Registra un ingreso o un gasto para empezar a ver tu balance y tus tendencias.")
+            if st.button("Registrar primer movimiento", type="primary", key="welcome_add_movement"):
+                st.session_state["show_add_transaction"] = True
+                st.rerun()
+        if st.session_state.get("show_add_transaction"):
+            mostrar_formulario_movimiento(usuario_id, categorias)
+        st.stop()
+
     month_options = [desplazar_mes(date.today(), offset) for offset in range(-11, 1)]
     header_left, header_right = st.columns([2.2, 1], vertical_alignment="bottom")
     with header_left:
@@ -1115,105 +1092,71 @@ if menu == "Resumen":
         variacion = (total_gastado - total_mes_anterior) / total_mes_anterior * 100
         nombre_mes_anterior = MESES[mes_anterior.month - 1].lower()
         if variacion > 0:
+            comparacion_breve = f"{abs(variacion):.0f}% más que en {nombre_mes_anterior}"
             comparacion = (
                 f"Gastaste {abs(variacion):.0f}% más que en {nombre_mes_anterior}: "
                 f"{formato_moneda(total_gastado)} frente a {formato_moneda(total_mes_anterior)}."
             )
         elif variacion < 0:
+            comparacion_breve = f"{abs(variacion):.0f}% menos que en {nombre_mes_anterior}"
             comparacion = (
                 f"Gastaste {abs(variacion):.0f}% menos que en {nombre_mes_anterior}: "
                 f"{formato_moneda(total_gastado)} frente a {formato_moneda(total_mes_anterior)}."
             )
         else:
+            comparacion_breve = f"Sin cambios frente a {nombre_mes_anterior}"
             comparacion = (
                 f"Gastaste lo mismo que en {nombre_mes_anterior}: "
                 f"{formato_moneda(total_gastado)}."
             )
     elif total_gastado:
+        comparacion_breve = "Sin comparación"
         comparacion = (
-            f"Registraste {formato_moneda(total_gastado)} en gastos este mes; "
-            f"no hubo gastos en {MESES[mes_anterior.month - 1].lower()} para comparar."
+            f"No hay gastos en {MESES[mes_anterior.month - 1].lower()} para comparar. "
+            f"Este mes: {formato_moneda(total_gastado)}."
         )
     else:
+        comparacion_breve = "Sin comparación"
         comparacion = (
-            f"No registraste gastos este mes ni en "
-            f"{MESES[mes_anterior.month - 1].lower()}."
+            f"No hay gastos registrados este mes ni en "
+            f"{MESES[mes_anterior.month - 1].lower()}. Registra movimientos para comparar."
         )
-    st.markdown(
-        f"""
-        <div class="tm-hero-card">
-            <div class="tm-hero-label">Balance neto · {MESES[mes_inicio.month - 1]} {mes_inicio.year}</div>
-            <div class="tm-hero-value">{formato_moneda(balance_neto)}</div>
-            <div class="tm-hero-breakdown">
-                <div class="tm-hero-breakdown-item">
-                    <span class="tm-hero-breakdown-label">Ingresos</span>
-                    <span class="tm-hero-breakdown-value">{formato_moneda(total_ingresos)}</span>
-                </div>
-                <div class="tm-hero-breakdown-item">
-                    <span class="tm-hero-breakdown-label">Gastos</span>
-                    <span class="tm-hero-breakdown-value">{formato_moneda(total_gastado)}</span>
-                </div>
-            </div>
-            <div class="tm-hero-comparison">{html.escape(comparacion)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    metric_balance, metric_ingresos, metric_gastos = st.columns(3)
+    metric_balance.metric("Balance neto", formato_moneda(balance_neto))
+    metric_ingresos.metric("Ingresos", formato_moneda(total_ingresos))
+    metric_gastos.metric(
+        "Gastos",
+        formato_moneda(total_gastado),
+        delta=comparacion_breve,
+        delta_color="inverse" if total_mes_anterior else "off",
     )
+    st.caption(comparacion)
 
-    with st.expander(
-        "＋  Registrar un movimiento",
-        expanded=st.session_state.get("show_add_transaction", False),
-    ):
-        with st.container(border=True):
-            with st.form("add_transaction", clear_on_submit=True):
-                tipo = st.selectbox("Tipo", ["Gasto", "Ingreso"])
-                amount = st.number_input("Monto", min_value=0.01, value=0.01, step=1.0, format="%.2f")
-                category = st.selectbox("Categoría", [*categorias, "Nueva categoría..."])
-                if category == "Nueva categoría...":
-                    category = st.text_input("Nombre de la categoría")
-                transaction_date = st.date_input("Fecha", value=date.today())
-                description = st.text_input("Descripción", max_chars=120)
-                payment_method = st.selectbox("Método de pago", METODOS_PAGO)
-                submitted = st.form_submit_button("Agregar transacción", type="primary", use_container_width=True)
-            if submitted:
-                try:
-                    db.registrar_transaccion(usuario_id, tipo, transaction_date, category, description, amount, payment_method)
-                    st.session_state["show_add_transaction"] = False
-                    st.rerun()
-                except ValueError as error:
-                    st.error(str(error))
+    mostrar_formulario_movimiento(usuario_id, categorias)
 
-    st.subheader("Ingresos y gastos")
-    with st.container(border=True):
-        st.caption("Comparación de ingresos y gastos de los últimos 6 meses.")
-        puntos_tendencia = []
-        for mes in (desplazar_mes(mes_inicio, offset) for offset in range(-5, 1)):
-            movimientos_periodo = [
-                movimiento for movimiento in movimientos_tendencia
-                if mes.isoformat() <= str(movimiento["fecha"]) < desplazar_mes(mes, 1).isoformat()
-            ]
-            ingresos_periodo = sum(
-                float(movimiento["monto"])
-                for movimiento in movimientos_periodo if movimiento["tipo"] == "Ingreso"
-            )
-            gastos_periodo = sum(
-                float(movimiento["monto"])
-                for movimiento in movimientos_periodo if movimiento["tipo"] == "Gasto"
-            )
-            puntos_tendencia.append(
-                (f"{MESES_CORTOS[mes.month - 1]}", ingresos_periodo, gastos_periodo)
-            )
-        tendencia = pd.DataFrame(
-            puntos_tendencia, columns=["Mes", "Ingresos", "Gastos"]
-        ).set_index("Mes")
-        if any(ingresos or gastos for _, ingresos, gastos in puntos_tendencia):
-            st.line_chart(tendencia)
-        else:
-            st.info("Aún no hay movimientos para mostrar. Registra un ingreso o un gasto.")
-            if st.button("Registrar primer movimiento", key="empty_trend_add"):
-                solicitar_nuevo_movimiento()
-                st.rerun()
-
+    puntos_tendencia = []
+    for mes in (desplazar_mes(mes_inicio, offset) for offset in range(-5, 1)):
+        movimientos_periodo = [
+            movimiento for movimiento in movimientos_tendencia
+            if mes.isoformat() <= str(movimiento["fecha"]) < desplazar_mes(mes, 1).isoformat()
+        ]
+        ingresos_periodo = sum(
+            float(movimiento["monto"])
+            for movimiento in movimientos_periodo if movimiento["tipo"] == "Ingreso"
+        )
+        gastos_periodo = sum(
+            float(movimiento["monto"])
+            for movimiento in movimientos_periodo if movimiento["tipo"] == "Gasto"
+        )
+        puntos_tendencia.append(
+            (f"{MESES_CORTOS[mes.month - 1]}", ingresos_periodo, gastos_periodo)
+        )
+    tendencia = pd.DataFrame(
+        puntos_tendencia, columns=["Mes", "Ingresos", "Gastos"]
+    ).set_index("Mes")
+    hay_datos_tendencia = any(
+        ingresos or gastos for _, ingresos, gastos in puntos_tendencia
+    )
     category_totals = {}
     for movement in gastos_mes:
         category_totals[movement["categoria"]] = (
@@ -1228,11 +1171,17 @@ if menu == "Resumen":
         key=lambda movimiento: (str(movimiento["fecha"]), movimiento["id"]),
         reverse=True,
     )[:5]
-    breakdown_column, recent_column = st.columns([1, 1], gap="large")
-    with breakdown_column:
-        st.subheader("Desglose")
-        with st.container(border=True):
-            if category_rows:
+
+    if hay_datos_tendencia and category_rows:
+        trend_column, breakdown_column = st.columns([2, 1], gap="large")
+        with trend_column:
+            st.subheader("Ingresos y gastos")
+            with st.container(border=True):
+                st.caption("Comparación de los últimos 6 meses.")
+                st.line_chart(tendencia)
+        with breakdown_column:
+            st.subheader("Desglose")
+            with st.container(border=True):
                 st.vega_lite_chart(pd.DataFrame(category_rows), {
                     "mark": {"type": "arc", "innerRadius": 58},
                     "encoding": {
@@ -1245,30 +1194,26 @@ if menu == "Resumen":
                     },
                     "view": {"stroke": None},
                 }, width="stretch")
-            else:
-                st.info(
-                    "Aún no hay gastos este mes. Registra un gasto para ver el desglose por categoría."
-                )
-                if st.button("Registrar gasto", key="empty_breakdown_add"):
-                    solicitar_nuevo_movimiento()
-                    st.rerun()
-    with recent_column:
-        recent_header, view_all = st.columns([1, 1], vertical_alignment="center")
+    elif hay_datos_tendencia:
+        st.subheader("Ingresos y gastos")
+        with st.container(border=True):
+            st.caption("Comparación de los últimos 6 meses.")
+            st.line_chart(tendencia)
+
+    if recent:
+        recent_header, view_all = st.columns([4, 1], vertical_alignment="center")
         recent_header.subheader("Recientes")
         if view_all.button("Ver todos →", key="dashboard_all_expenses"):
             st.session_state["menu"] = "Movimientos"
             st.rerun()
         with st.container(border=True):
-            if recent:
-                for transaction in recent:
-                    mostrar_movimiento(transaction, usuario_id)
-            else:
-                st.info(
-                    "Aún no hay movimientos este mes. Registra un ingreso o un gasto para empezar."
-                )
-                if st.button("Registrar primer movimiento", key="empty_recent_add"):
-                    solicitar_nuevo_movimiento()
-                    st.rerun()
+            for transaction in recent:
+                mostrar_movimiento(transaction, usuario_id)
+    elif not movimientos_mes:
+        st.info(
+            f"No hay movimientos en {MESES[mes_inicio.month - 1].lower()}. "
+            "Usa «Nuevo movimiento» para registrarlos."
+        )
 
 elif menu == "Movimientos":
     st.markdown('<div class="tm-page-kicker">Historial de actividad</div>', unsafe_allow_html=True)
@@ -1288,6 +1233,8 @@ elif menu == "Movimientos":
     if transactions:
         for transaction in transactions:
             mostrar_movimiento(transaction, usuario_id, editable=True)
+    elif not tiene_movimientos:
+        st.info("Aún no hay movimientos. Vuelve a Inicio para registrar el primero.")
     else:
         st.info(
             "No hay movimientos que coincidan. Prueba otra categoría o amplía el rango de fechas."

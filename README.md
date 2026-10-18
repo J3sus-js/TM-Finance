@@ -32,12 +32,16 @@ gastos. Incluye una comparación explícita de los gastos con el mes anterior,
 tendencia de seis meses para ingresos y gastos, desglose por categoría y
 movimientos recientes. Los filtros del historial se reorganizan en dos columnas
 en pantallas pequeñas. El selector del resumen permite consultar cualquiera de
-los últimos doce meses.
+los últimos doce meses. Las cuentas nuevas muestran una bienvenida con una sola
+acción para registrar el primer movimiento; después, el resumen presenta balance,
+ingresos y gastos como métricas separadas. La tendencia y el desglose comparten
+espacio con más anchura para el gráfico.
 Cada usuario puede alternar entre los temas **Claro** y **Oscuro** con el botón
 flotante de sol/luna; la selección se mantiene durante la sesión de Streamlit.
 La interfaz usa una entrada breve en el resumen y microinteracciones discretas
 en tarjetas y controles, sin movimiento continuo; respeta la preferencia del
-dispositivo para reducir movimiento.
+dispositivo para reducir movimiento. Los colores base de Streamlit y el modo
+mínimo de la barra de herramientas se configuran en `.streamlit/config.toml`.
 
 ## Cuentas y datos
 
