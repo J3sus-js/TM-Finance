@@ -27,9 +27,12 @@ ruta, define `TM_FINANCE_DB_PATH` antes de iniciar Streamlit.
 ## Interfaz
 
 El panel usa un diseño claro y adaptable a móviles, con navegación lateral,
-registro rápido de gastos y un resumen mensual con comparación, tendencia de seis
-meses, desglose por categoría y movimientos recientes. El selector del resumen
-permite consultar cualquiera de los últimos doce meses.
+registro rápido de movimientos y un resumen mensual del balance neto, ingresos y
+gastos. Incluye una comparación explícita de los gastos con el mes anterior,
+tendencia de seis meses para ingresos y gastos, desglose por categoría y
+movimientos recientes. Los filtros del historial se reorganizan en dos columnas
+en pantallas pequeñas. El selector del resumen permite consultar cualquiera de
+los últimos doce meses.
 Cada usuario puede alternar entre los temas **Claro** y **Oscuro** con el botón
 flotante de sol/luna; la selección se mantiene durante la sesión de Streamlit.
 La interfaz usa una entrada breve en el resumen y microinteracciones discretas
